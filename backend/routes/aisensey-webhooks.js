@@ -224,20 +224,24 @@ router.post("/create-order", async (req, res) => {
         }))
       : [];
 
-    // Default pricing if none provided
-    if (item_prices.length === 0) {
+    // If explicitly quick_pickup or no items, keep empty items and zero pricing
+    let isQuickPickup = (service_type === "quick_pickup") || !Array.isArray(items) || items.length === 0;
+    if (!isQuickPickup && item_prices.length === 0) {
+      // Backward-compat default pricing (only when not quick pickup)
       let unit = 70;
       if (service_type === "iron") unit = 120;
       if (service_type === "dry_clean") unit = 0;
       item_prices = [{ service_name: service_type || "laundry", quantity: 1, unit_price: unit, total_price: unit }];
     }
 
-    const subtotal = item_prices.reduce((s, i) => s + i.total_price, 0);
+    const subtotal = isQuickPickup ? 0 : item_prices.reduce((s, i) => s + i.total_price, 0);
 
-    // Discounts: 20% above 500, else 10%
+    // Discounts: 20% above 500, else 10% (no discount for quick pickup with zero)
     let discount = 0;
-    if (subtotal >= 500) discount = Math.round(subtotal * 0.2);
-    else discount = Math.round(subtotal * 0.1);
+    if (!isQuickPickup) {
+      if (subtotal >= 500) discount = Math.round(subtotal * 0.2);
+      else discount = Math.round(subtotal * 0.1);
+    }
 
     const final_amount = Math.max(0, subtotal - discount);
 
@@ -261,13 +265,17 @@ router.post("/create-order", async (req, res) => {
 
     const istFmt = formatIST(dt);
 
+    const servicesList = isQuickPickup
+      ? ["Quick Pickup"]
+      : item_prices.map((i) => (i.quantity > 1 ? `${i.service_name} x${i.quantity}` : i.service_name));
+
     const booking = new Booking({
       name: customer.name || customer.full_name || "Customer",
       phone: customer.phone,
       customer_id: customer._id,
-      service: item_prices.map((i) => (i.quantity > 1 ? `${i.service_name} x${i.quantity}` : i.service_name)).join(", "),
-      service_type: service_type || "laundry",
-      services: item_prices.map((i) => (i.quantity > 1 ? `${i.service_name} x${i.quantity}` : i.service_name)),
+      service: servicesList.join(", ") || "Quick Pickup",
+      service_type: isQuickPickup ? "quick_pickup" : (service_type || "laundry"),
+      services: servicesList,
       scheduled_date: istFmt.date,
       scheduled_time: istFmt.time,
       delivery_date: istFmt.date,
@@ -283,7 +291,7 @@ router.post("/create-order", async (req, res) => {
       coupon_code: coupon_code || null,
       special_instructions: notes || "",
       charges_breakdown: { base_price: subtotal, discount },
-      item_prices,
+      item_prices: isQuickPickup ? [] : item_prices,
     });
 
     await booking.save();
