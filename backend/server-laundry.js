@@ -282,7 +282,7 @@ app.get('/api/health', (req, res) => {
 // API Routes with error handling
 if (otpAuthRoutes) {
   app.use("/api/auth", otpAuthRoutes);
-  console.log("🔗 Auth routes registered at /api/auth");
+  console.log("�� Auth routes registered at /api/auth");
 }
 
 if (bookingRoutes) {
@@ -338,6 +338,15 @@ try {
   );
 } catch (error) {
   console.error("❌ Failed to load Detected Locations routes:", error.message);
+}
+
+// AiSensy Webhooks routes (WhatsApp chatbot integration)
+try {
+  const aisenseyRoutes = require("./routes/aisensey-webhooks");
+  app.use("/api/aisensey", aisenseyRoutes);
+  console.log("🔗 AiSensy webhook routes registered at /api/aisensey");
+} catch (error) {
+  console.error("❌ Failed to load AiSensy webhook routes:", error.message);
 }
 
 // Coupons routes
