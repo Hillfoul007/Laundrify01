@@ -80,6 +80,13 @@ const getVendorCoords = (req) => {
 
 const getGoogleMapsApiKey = () => process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
 
+// Helper: normalize phone to digits only and limit to 12 chars
+const normalizePhone = (phone) => {
+  if (!phone && phone !== 0) return "";
+  const s = String(phone).replace(/\D/g, "");
+  return s.slice(0, 12);
+};
+
 // 1) Validate Address (serviceability within X km)
 router.post("/validate-address", async (req, res) => {
   try {
@@ -157,13 +164,14 @@ router.post("/validate-datetime", async (req, res) => {
 
 // Utility: ensure/find customer by phone
 const findOrCreateCustomerByPhone = async (phone, name) => {
-  if (!phone) throw new Error("phone_required");
-  let user = await User.findOne({ phone });
+  const clean = normalizePhone(phone);
+  if (!clean) throw new Error("phone_required");
+  let user = await User.findOne({ phone: clean });
   if (user) return user;
   user = new User({
-    phone,
-    name: name || `User ${phone.slice(-4)}`,
-    full_name: name || `User ${phone.slice(-4)}`,
+    phone: clean,
+    name: name || `User ${clean.slice(-4)}`,
+    full_name: name || `User ${clean.slice(-4)}`,
     user_type: "customer",
     is_verified: true,
     phone_verified: true,
@@ -172,7 +180,7 @@ const findOrCreateCustomerByPhone = async (phone, name) => {
     await user.save();
   } catch (err) {
     if (err.code === 11000) {
-      const again = await User.findOne({ phone });
+      const again = await User.findOne({ phone: clean });
       if (again) return again;
     }
     throw err;
@@ -200,7 +208,10 @@ router.post("/create-order", async (req, res) => {
       vendor_lng,
     } = req.body || {};
 
-    if (!phone || !address || (!pickup_datetime && !(pickup_date && pickup_time))) {
+    // Normalize phone (digits only, up to 12)
+    const cleanPhone = normalizePhone(phone);
+
+    if (!cleanPhone || !address || (!pickup_datetime && !(pickup_date && pickup_time))) {
       return res.status(400).json({ ok: false, reason: "missing_fields", required: ["phone", "address", "pickup_datetime_or_date_and_time"] });
     }
 
