@@ -181,6 +181,28 @@ router.post("/lookup-address-by-phone", async (req, res) => {
       }
     }
 
+    // 3) If still not found, try recent Booking records for that phone variants
+    if (!addr) {
+      const booking = await Booking.findOne({ phone: { $in: vars } }).sort({ created_at: -1 });
+      if (booking) {
+        // synthesize an address-like object from booking
+        addr = {
+          _id: booking._id,
+          title: booking.service || "",
+          full_address: booking.address || "",
+          area: (booking.address_details && booking.address_details.street) || "",
+          city: (booking.address_details && booking.address_details.city) || "",
+          state: (booking.address_details && booking.address_details.state) || "",
+          pincode: (booking.address_details && booking.address_details.pincode) || "",
+          landmark: (booking.address_details && booking.address_details.landmark) || "",
+          contact_person: booking.name || "",
+          contact_phone: booking.phone || "",
+          is_default: false,
+          coordinates: { lat: booking.coordinates && booking.coordinates.lat ? Number(booking.coordinates.lat) : null, lng: booking.coordinates && booking.coordinates.lng ? Number(booking.coordinates.lng) : null },
+        };
+      }
+    }
+
     if (!addr) return res.json({ ok: true, found: false });
 
     const result = {
@@ -198,8 +220,8 @@ router.post("/lookup-address-by-phone", async (req, res) => {
         contact_person: addr.contact_person || "",
         contact_phone: addr.contact_phone || "",
         is_default: !!addr.is_default,
-        lat: addr.coordinates && addr.coordinates.lat ? Number(addr.coordinates.lat) : null,
-        lng: addr.coordinates && addr.coordinates.lng ? Number(addr.coordinates.lng) : null,
+        lat: addr.coordinates && addr.coordinates.lat ? Number(addr.coordinates.lat) : (addr.lat || null),
+        lng: addr.coordinates && addr.coordinates.lng ? Number(addr.coordinates.lng) : (addr.lng || null),
       },
     };
     return res.json(result);
