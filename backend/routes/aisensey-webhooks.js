@@ -97,12 +97,33 @@ router.post("/lookup-address-by-phone", async (req, res) => {
     }
     const clean = normalizePhone(phone);
 
-    // 1) Try to find address where contact_phone ends with cleaned phone
-    let addr = await Address.findOne({ contact_phone: { $regex: new RegExp(`${clean}$`) }, status: "active" }).sort({ is_default: -1, created_at: -1 });
+    // Build phone variants: with/without country code 91, last-10, strip leading zeros
+    const variants = new Set();
+    variants.add(clean);
+    // strip leading zeros
+    variants.add(clean.replace(/^0+/, ''));
+    // last 10 digits
+    if (clean.length > 10) variants.add(clean.slice(-10));
+    // add/strip country code 91
+    if (clean.startsWith('91')) {
+      variants.add(clean.slice(2));
+      if (clean.length > 12) variants.add(clean.slice(-10));
+    } else {
+      variants.add('91' + clean);
+      variants.add('0' + clean);
+    }
 
-    // 2) If not found, try user -> default address
+    const vars = Array.from(variants).filter(Boolean).map(v => v.replace(/[^0-9]/g, ''));
+
+    // 1) Try to find address where contact_phone ends with any variant
+    let addr = await Address.findOne({
+      status: "active",
+      $or: vars.map(v => ({ contact_phone: { $regex: new RegExp(`${v}$`) } })),
+    }).sort({ is_default: -1, created_at: -1 });
+
+    // 2) If not found, try user -> default address (match user phone with variants)
     if (!addr) {
-      const user = await User.findOne({ phone: clean });
+      const user = await User.findOne({ phone: { $in: vars } });
       if (user) {
         addr = await Address.getDefaultAddress(user._id);
       }
