@@ -225,9 +225,32 @@ router.post("/create-order", async (req, res) => {
     const dt = parseISTDateTime(pickupDtStr);
     if (!dt) return res.status(400).json({ ok: false, reason: "invalid_datetime" });
 
-    // Optional: serviceability check if vendor coords present
-    if (vendor_lat && vendor_lng && lat && lng) {
-      const distance_km = haversineKm(Number(vendor_lat), Number(vendor_lng), Number(lat), Number(lng));
+    // If lat/lng not provided, try server-side geocoding of the address
+    let finalLat = lat ? Number(lat) : null;
+    let finalLng = lng ? Number(lng) : null;
+    let geocodedAddress = null;
+    if ((!finalLat || !finalLng) && typeof address === "string" && address.trim()) {
+      const key = getGoogleMapsApiKey();
+      if (key) {
+        try {
+          const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${key}`;
+          const rgeo = await fetch(url);
+          const gdata = await rgeo.json();
+          if (gdata && gdata.results && gdata.results[0]) {
+            const best = gdata.results[0];
+            finalLat = best.geometry.location.lat;
+            finalLng = best.geometry.location.lng;
+            geocodedAddress = best.formatted_address;
+          }
+        } catch (e) {
+          console.error("create-order geocode failed", e);
+        }
+      }
+    }
+
+    // Optional: serviceability check if vendor coords present (use finalLat/finalLng)
+    if (vendor_lat && vendor_lng && finalLat && finalLng) {
+      const distance_km = haversineKm(Number(vendor_lat), Number(vendor_lng), Number(finalLat), Number(finalLng));
       if (distance_km > 5) {
         return res.status(200).json({ ok: true, accepted: false, reason: "out_of_radius", distance_km: Number(distance_km.toFixed(2)) });
       }
@@ -284,6 +307,9 @@ router.post("/create-order", async (req, res) => {
         .join(", ");
     }
 
+    // Prefer geocoded normalized address when available
+    if (geocodedAddress && typeof address === "string") addressString = geocodedAddress;
+
     const istFmt = formatIST(dt);
 
     const servicesList = isQuickPickup
@@ -304,7 +330,7 @@ router.post("/create-order", async (req, res) => {
       provider_name: "Laundrify WhatsApp",
       address: addressString,
       address_details,
-      coordinates: { lat: lat ? Number(lat) : null, lng: lng ? Number(lng) : null },
+      coordinates: { lat: finalLat ? Number(finalLat) : null, lng: finalLng ? Number(finalLng) : null },
       additional_details: notes || "",
       total_price: subtotal,
       discount_amount: discount,
