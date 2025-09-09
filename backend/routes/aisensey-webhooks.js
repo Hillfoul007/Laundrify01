@@ -341,13 +341,14 @@ router.post("/create-order", async (req, res) => {
     }
 
     // Normalize/construct pickup_datetime from separate fields if provided
-    let pickupDtStr = pickup_datetime;
-    if (!pickupDtStr && pickup_date && pickup_time) {
-      pickupDtStr = `${String(pickup_date).trim()} ${String(pickup_time).trim()}`;
+    let dt = null;
+    if (pickup_date && pickup_time) {
+      dt = parseDateAndTimeSeparate(pickup_date, pickup_time);
+    } else if (pickup_datetime) {
+      dt = parseISTDateTime(String(pickup_datetime).trim()) || parseDateAndTimeSeparate(String(pickup_datetime).trim(), '');
     }
 
     // Validate datetime
-    const dt = parseISTDateTime(pickupDtStr);
     if (!dt) return res.status(400).json({ ok: false, reason: "invalid_datetime" });
 
     // If lat/lng not provided, try server-side geocoding of the address
