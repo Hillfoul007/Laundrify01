@@ -50,6 +50,58 @@ const parseISTDateTime = (input) => {
   return dateUTC; // represents same wall-clock time in IST
 };
 
+// Parse separate date and time fields with multiple accepted formats
+const parseDateAndTimeSeparate = (dateStr, timeStr) => {
+  if (!dateStr) return null;
+  const d = String(dateStr).trim();
+  const t = String(timeStr || '').trim();
+
+  // Try ISO date first (YYYY-MM-DD)
+  const isoMatch = d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const dmyMatch = d.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})$/);
+
+  let day, month, year;
+  if (isoMatch) {
+    year = parseInt(isoMatch[1], 10);
+    month = parseInt(isoMatch[2], 10);
+    day = parseInt(isoMatch[3], 10);
+  } else if (dmyMatch) {
+    day = parseInt(dmyMatch[1], 10);
+    month = parseInt(dmyMatch[2], 10);
+    year = parseInt(dmyMatch[3].length === 2 ? `20${dmyMatch[3]}` : dmyMatch[3], 10);
+  } else {
+    // fallback to Date parsing
+    const tryDate = new Date(d);
+    if (!isNaN(tryDate.getTime())) return tryDate;
+    return null;
+  }
+
+  // parse time
+  let hh = 0;
+  let mm = 0;
+  if (t) {
+    const tm = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?$/);
+    if (tm) {
+      hh = parseInt(tm[1], 10);
+      mm = parseInt(tm[2], 10);
+      const ap = tm[3];
+      if (ap) {
+        const isPM = ap.toLowerCase() === 'pm';
+        if (isPM && hh < 12) hh += 12;
+        if (!isPM && hh === 12) hh = 0;
+      }
+    } else {
+      // support 24h like 23:30
+      const tm2 = t.match(/^(\d{1,2}):(\d{2})$/);
+      if (tm2) { hh = parseInt(tm2[1],10); mm = parseInt(tm2[2],10); }
+    }
+  }
+
+  // Construct UTC date representing that IST wall-clock time
+  const dateUTC = new Date(Date.UTC(year, month - 1, day, hh - 5, mm - 30, 0));
+  return dateUTC;
+};
+
 const toIST = (d) => new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
 
 const formatIST = (d) => {
