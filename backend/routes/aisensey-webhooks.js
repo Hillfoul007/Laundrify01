@@ -257,9 +257,12 @@ router.post("/validate-address", async (req, res) => {
 router.post("/validate-datetime", async (req, res) => {
   try {
     const { datetime, date, time, min_minutes = 60, start_hour_24 = 9, end_hour_24 = 21 } = req.body || {};
-    let dtStr = datetime;
-    if (!dtStr && date && time) dtStr = `${String(date).trim()} ${String(time).trim()}`;
-    const dt = parseISTDateTime(dtStr);
+    let dt = null;
+    if (date && time) {
+      dt = parseDateAndTimeSeparate(date, time);
+    } else if (datetime) {
+      dt = parseISTDateTime(String(datetime).trim()) || parseDateAndTimeSeparate(String(datetime).trim(), '');
+    }
     if (!dt) return res.status(200).json({ ok: true, valid: false, reason: "unparseable" });
 
     const now = new Date();
