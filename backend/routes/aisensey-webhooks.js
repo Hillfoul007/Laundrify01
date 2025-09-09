@@ -2,6 +2,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const Booking = require("../models/Booking");
 const User = require("../models/User");
+const Address = require("../models/Address");
 
 const router = express.Router();
 
@@ -87,7 +88,55 @@ const normalizePhone = (phone) => {
   return s.slice(0, 12);
 };
 
-// 1) Validate Address (serviceability within X km)
+// 1) Lookup address by phone (check existing addresses before geocoding)
+router.post("/lookup-address-by-phone", async (req, res) => {
+  try {
+    const { phone } = req.body || {};
+    if (!phone || typeof phone !== "string") {
+      return res.status(400).json({ ok: false, reason: "phone_required" });
+    }
+    const clean = normalizePhone(phone);
+
+    // 1) Try to find address where contact_phone ends with cleaned phone
+    let addr = await Address.findOne({ contact_phone: { $regex: new RegExp(`${clean}$`) }, status: "active" }).sort({ is_default: -1, created_at: -1 });
+
+    // 2) If not found, try user -> default address
+    if (!addr) {
+      const user = await User.findOne({ phone: clean });
+      if (user) {
+        addr = await Address.getDefaultAddress(user._id);
+      }
+    }
+
+    if (!addr) return res.json({ ok: true, found: false });
+
+    const result = {
+      ok: true,
+      found: true,
+      address: {
+        id: String(addr._id),
+        title: addr.title || "",
+        full_address: addr.full_address || "",
+        area: addr.area || "",
+        city: addr.city || "",
+        state: addr.state || "",
+        pincode: addr.pincode || "",
+        landmark: addr.landmark || "",
+        contact_person: addr.contact_person || "",
+        contact_phone: addr.contact_phone || "",
+        is_default: !!addr.is_default,
+        lat: addr.coordinates && addr.coordinates.lat ? Number(addr.coordinates.lat) : null,
+        lng: addr.coordinates && addr.coordinates.lng ? Number(addr.coordinates.lng) : null,
+      },
+    };
+    return res.json(result);
+  } catch (e) {
+    console.error("/lookup-address-by-phone error", e);
+    res.status(500).json({ ok: false, reason: "server_error", message: e.message });
+  }
+});
+
+// 2) Validate Address (serviceability within X km)
 router.post("/validate-address", async (req, res) => {
   try {
     const { address, radius_km = 5 } = req.body || {};
