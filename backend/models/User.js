@@ -21,13 +21,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: false,
       trim: true,
-      minlength: [2, "Name must be at least 2 characters"],
+      minlength: [1, "Name must be at least 1 character"],
     },
     name: {
       type: String,
       required: false,
       trim: true,
-      minlength: [2, "Name must be at least 2 characters"],
+      minlength: [1, "Name must be at least 1 character"],
     },
     phone: {
       type: String,
