@@ -364,7 +364,8 @@ router.post("/cancel-order", async (req, res) => {
     // Optional: basic phone check if provided
     if (phone) {
       const customer = await User.findById(booking.customer_id);
-      if (customer && customer.phone && String(customer.phone) !== String(phone)) {
+      const cleanQueryPhone = normalizePhone(phone);
+      if (customer && customer.phone && String(customer.phone) !== cleanQueryPhone) {
         return res.status(403).json({ ok: false, reason: "phone_mismatch" });
       }
     }
