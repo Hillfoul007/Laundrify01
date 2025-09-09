@@ -233,7 +233,7 @@ router.post("/create-order", async (req, res) => {
       }
     }
 
-    const customer = await findOrCreateCustomerByPhone(String(phone), name);
+    const customer = await findOrCreateCustomerByPhone(cleanPhone, name);
 
     // Compute pricing
     let item_prices = Array.isArray(items) && items.length
