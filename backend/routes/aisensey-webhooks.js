@@ -127,8 +127,10 @@ router.post("/validate-address", async (req, res) => {
 // 2) Validate Date & Time (9AM–9PM IST, at least +1 hour)
 router.post("/validate-datetime", async (req, res) => {
   try {
-    const { datetime, min_minutes = 60, start_hour_24 = 9, end_hour_24 = 21 } = req.body || {};
-    const dt = parseISTDateTime(datetime);
+    const { datetime, date, time, min_minutes = 60, start_hour_24 = 9, end_hour_24 = 21 } = req.body || {};
+    let dtStr = datetime;
+    if (!dtStr && date && time) dtStr = `${String(date).trim()} ${String(time).trim()}`;
+    const dt = parseISTDateTime(dtStr);
     if (!dt) return res.status(200).json({ ok: true, valid: false, reason: "unparseable" });
 
     const now = new Date();
@@ -189,19 +191,27 @@ router.post("/create-order", async (req, res) => {
       address,
       lat,
       lng,
-      pickup_datetime, // string in DD-MM-YYYY HH:MM AM/PM
+      pickup_datetime, // string in DD-MM-YYYY HH:MM AM/PM or ISO
+      pickup_date, // optional separate date e.g. "05-09-2025"
+      pickup_time, // optional separate time e.g. "10:30 AM"
       coupon_code,
       notes,
       vendor_lat,
       vendor_lng,
     } = req.body || {};
 
-    if (!phone || !address || !pickup_datetime) {
-      return res.status(400).json({ ok: false, reason: "missing_fields", required: ["phone", "address", "pickup_datetime"] });
+    if (!phone || !address || (!pickup_datetime && !(pickup_date && pickup_time))) {
+      return res.status(400).json({ ok: false, reason: "missing_fields", required: ["phone", "address", "pickup_datetime_or_date_and_time"] });
+    }
+
+    // Normalize/construct pickup_datetime from separate fields if provided
+    let pickupDtStr = pickup_datetime;
+    if (!pickupDtStr && pickup_date && pickup_time) {
+      pickupDtStr = `${String(pickup_date).trim()} ${String(pickup_time).trim()}`;
     }
 
     // Validate datetime
-    const dt = parseISTDateTime(pickup_datetime);
+    const dt = parseISTDateTime(pickupDtStr);
     if (!dt) return res.status(400).json({ ok: false, reason: "invalid_datetime" });
 
     // Optional: serviceability check if vendor coords present
