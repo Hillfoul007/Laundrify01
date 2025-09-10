@@ -375,7 +375,7 @@ export default function RiderDashboard() {
         // If accepting an order, navigate to the order detail screen so rider can edit items and start navigation there
         if (action === 'accept') {
           // navigate to rider order detail page
-          navigate(`/rider/orders/${orderId}`);
+          navigate(`/rider/orders/${orderId}`, { state: { fromAccept: true } });
         } else if (action === 'start') {
           // For start action, open navigation if order is present
           const currentOrder = assignedOrders.find(order => order._id === orderId);
