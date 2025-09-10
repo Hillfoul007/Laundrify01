@@ -402,7 +402,7 @@ router.post("/create-order", async (req, res) => {
     if (pickup_date && pickup_time) {
       dt = parseDateAndTimeSeparate(pickup_date, pickup_time);
     } else if (pickup_datetime) {
-      dt = parseISTDateTime(String(pickup_datetime).trim()) || parseDateAndTimeSeparate(String(pickup_datetime).trim(), '');
+      dt = parseFlexibleDateTime(String(pickup_datetime).trim()) || parseDateAndTimeSeparate(String(pickup_datetime).trim(), '');
     }
 
     // Validate datetime
