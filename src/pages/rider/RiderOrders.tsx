@@ -38,6 +38,18 @@ export default function RiderOrders() {
   const { orderId } = useParams();
   const navigate = useNavigate();
   const [order, setOrder] = useState<any>(null);
+
+  // If navigated from Accept action, Dialogflow or RiderDashboard passes state { fromAccept: true }
+  useEffect(() => {
+    try {
+      if ((location as any)?.state && (location as any).state.fromAccept) {
+        console.log('➡️ Entering edit mode: navigated from accept');
+        setIsEditing(true);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [location]);
   const [isEditing, setIsEditing] = useState(false);
   const location = useLocation();
   const [editedItems, setEditedItems] = useState<any[]>([]);
