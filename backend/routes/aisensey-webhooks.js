@@ -116,6 +116,27 @@ const parseDateAndTimeSeparate = (dateStr, timeStr) => {
   return dateUTC;
 };
 
+// Flexible parser: try parseISTDateTime (existing) and fallback to parsing by splitting date and time
+const parseFlexibleDateTime = (input) => {
+  if (!input || typeof input !== 'string') return null;
+  // First try the strict parser
+  try {
+    const dt1 = parseISTDateTime(input);
+    if (dt1) return dt1;
+  } catch (e) {
+    // ignore
+  }
+  // Try splitting into date + time (first token is date)
+  const parts = input.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    const datePart = parts[0];
+    const timePart = parts.slice(1).join(' ');
+    const dt2 = parseDateAndTimeSeparate(datePart, timePart);
+    if (dt2) return dt2;
+  }
+  return null;
+};
+
 const toIST = (d) => new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
 
 const formatIST = (d) => {
