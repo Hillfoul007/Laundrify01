@@ -39,6 +39,7 @@ export default function RiderOrders() {
   const navigate = useNavigate();
   const [order, setOrder] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const location = useLocation();
   const [editedItems, setEditedItems] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedService, setSelectedService] = useState<LaundryService | null>(null);
