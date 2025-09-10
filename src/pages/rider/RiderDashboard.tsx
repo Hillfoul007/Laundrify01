@@ -548,110 +548,72 @@ export default function RiderDashboard() {
                 <p className="rider-empty-description-mobile">Make sure you're active to receive orders</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-2">
                 {assignedOrders
                   .sort((a, b) => {
-                    // Sort by pickup time - earliest first
                     const timeA = a.pickupTime || a.scheduled_time || '23:59';
                     const timeB = b.pickupTime || b.scheduled_time || '23:59';
                     const dateA = a.pickupDate || a.scheduled_date || '2099-12-31';
                     const dateB = b.pickupDate || b.scheduled_date || '2099-12-31';
-
-                    // Combine date and time for comparison
                     const datetimeA = new Date(`${dateA} ${timeA}`);
                     const datetimeB = new Date(`${dateB} ${timeB}`);
-
                     return datetimeA.getTime() - datetimeB.getTime();
                   })
-                  .map((order) => (
-                  <Card key={order._id} className="rider-card-mobile rider-order-card-mobile">
-                    <CardContent className="pt-4">
-                      <div className="rider-order-header-mobile">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h4 className="rider-order-title-mobile">Order #{order.bookingId}</h4>
-                            <p className="rider-order-type-mobile">{order.type} Order</p>
-                          </div>
-                          <Badge variant={
-                            order.riderStatus === 'assigned' ? 'secondary' :
-                            order.riderStatus === 'picked_up' ? 'default' : 'default'
-                          } className="rider-badge-mobile">
-                            {order.riderStatus}
-                          </Badge>
-                        </div>
-                      </div>
-                      
-                      <div className="rider-order-details-mobile">
-                        <div className="rider-order-detail-item-mobile">
-                          <User className="h-4 w-4 rider-order-detail-icon-mobile" />
-                          <div className="rider-order-detail-content-mobile">
-                            <div className="rider-order-detail-label-mobile">Customer</div>
-                            <div className="rider-order-detail-value-mobile">{order.customerName}</div>
-                          </div>
-                        </div>
-                        <div className="rider-order-detail-item-mobile">
-                          <Phone className="h-4 w-4 rider-order-detail-icon-mobile" />
-                          <div className="rider-order-detail-content-mobile">
-                            <div className="rider-order-detail-label-mobile">Phone</div>
-                            <a href={`tel:${order.customerPhone}`} className="rider-order-detail-value-mobile rider-phone-link-mobile">{order.customerPhone}</a>
-                          </div>
-                        </div>
-                        <div className="rider-order-detail-item-mobile">
-                          <MapPin className="h-4 w-4 rider-order-detail-icon-mobile" />
-                          <div className="rider-order-detail-content-mobile">
-                            <div className="rider-order-detail-label-mobile">Address</div>
-                            <div className="rider-order-detail-value-mobile">{order.address}</div>
-                          </div>
-                        </div>
-                        <div className="rider-order-detail-item-mobile">
-                          <Clock className="h-4 w-4 rider-order-detail-icon-mobile" />
-                          <div className="rider-order-detail-content-mobile">
-                            <div className="rider-order-detail-label-mobile">Pickup Time</div>
-                            <div className="rider-order-detail-value-mobile">{order.pickupTime}</div>
-                          </div>
-                        </div>
-                      </div>
+                  .map((order) => {
+                    const isExpanded = expandedOrder === order._id;
+                    return (
+                      <Card key={order._id} className="rider-card-mobile rider-order-card-mobile">
+                        <CardContent className="py-3 px-4">
+                          <div className="flex items-center justify-between">
+                            <div className="min-w-0">
+                              <div className="flex items-center space-x-2">
+                                <h4 className="font-medium text-sm truncate">{order.customerName || ('Order #' + (order.bookingId || order._id))}</h4>
+                                <Badge className="text-xs ml-1">{order.riderStatus}</Badge>
+                              </div>
+                              <div className="text-xs text-gray-500 truncate mt-1">{order.address}</div>
+                              <div className="text-xs text-gray-500 mt-1">{order.pickupTime || order.scheduled_time}</div>
+                            </div>
 
-                      <div className="rider-order-actions-mobile">
-                        {order.riderStatus === 'assigned' && (
-                          <Button
-                            onClick={() => handleOrderAction(order._id, 'accept')}
-                            className="rider-action-button-mobile rider-primary-action-mobile"
-                            disabled={!isActive || rider?.status !== 'approved'}
-                          >
-                            <CheckCircle className="h-4 w-4" />
-                            {(!isActive || rider?.status !== 'approved') ? 'Cannot Accept' : 'Accept & Navigate'}
-                          </Button>
-                        )}
-                        {order.riderStatus === 'accepted' && (
-                          <Button
-                            onClick={() => handleOrderAction(order._id, 'start')}
-                            className="rider-action-button-mobile rider-secondary-action-mobile"
-                          >
-                            <Navigation className="h-4 w-4" />
-                            Start & Navigate
-                          </Button>
-                        )}
-                        {order.riderStatus === 'picked_up' && (
-                          <Button
-                            onClick={() => handleOrderAction(order._id, 'complete')}
-                            className="rider-action-button-mobile rider-complete-action-mobile"
-                          >
-                            <CheckCircle className="h-4 w-4" />
-                            Complete Delivery
-                          </Button>
-                        )}
-                        <Button
-                          variant="outline"
-                          onClick={() => navigate(`/rider/orders/${order._id}`)}
-                          className="rider-action-button-mobile rider-outline-action-mobile"
-                        >
-                          📝 Edit Order
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                            <div className="flex flex-col items-end space-y-2">
+                              <div className="flex space-x-2">
+                                {order.riderStatus === 'assigned' && (
+                                  <button onClick={() => handleOrderAction(order._id, 'accept')} className="bg-laundrify-mint text-white px-3 py-1 rounded text-xs" disabled={!isActive || rider?.status !== 'approved'}>
+                                    Accept
+                                  </button>
+                                )}
+                                <button onClick={() => openGoogleMapsNavigation(order)} className="border px-2 py-1 rounded text-xs">Nav</button>
+                              </div>
+
+                              <button onClick={() => setExpandedOrder(isExpanded ? null : order._id)} className="text-xs text-gray-600">
+                                {isExpanded ? 'Hide' : 'Details'}
+                              </button>
+                            </div>
+                          </div>
+
+                          {isExpanded && (
+                            <div className="mt-3 border-t pt-3">
+                              <div className="text-sm"><strong>Phone:</strong> <a href={`tel:${order.customerPhone}`} className="text-laundrify-blue">{order.customerPhone}</a></div>
+                              <div className="text-sm mt-1"><strong>Type:</strong> {order.type}</div>
+                              <div className="text-sm mt-1"><strong>Order ID:</strong> {order.bookingId || order._id}</div>
+                              <div className="flex mt-3 space-x-2">
+                                {order.riderStatus === 'assigned' && (
+                                  <Button onClick={() => handleOrderAction(order._id, 'accept')} className="rider-primary-action-mobile text-sm">Accept & Navigate</Button>
+                                )}
+                                {order.riderStatus === 'accepted' && (
+                                  <Button onClick={() => handleOrderAction(order._id, 'start')} className="rider-secondary-action-mobile text-sm">Start & Navigate</Button>
+                                )}
+                                {order.riderStatus === 'picked_up' && (
+                                  <Button onClick={() => handleOrderAction(order._id, 'complete')} className="rider-complete-action-mobile text-sm">Complete Delivery</Button>
+                                )}
+                                <Button variant="outline" onClick={() => navigate(`/rider/orders/${order._id}`)} className="text-sm">Edit</Button>
+                              </div>
+                            </div>
+                          )}
+
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
               </div>
             )}
           </CardContent>
