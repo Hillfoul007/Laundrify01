@@ -416,9 +416,6 @@ export default function RiderDashboard() {
         )}
 
 
-        {/* Notifications Card */}
-        <RiderNotifications compact={true} />
-
         {/* Rider Status Alert */}
         {rider?.status !== 'approved' && (
           <Card className="rider-card-mobile rider-alert-mobile rider-alert-warning-mobile">
@@ -497,127 +494,37 @@ export default function RiderDashboard() {
           </CardContent>
         </Card>
 
-        {/* Rider Info */}
         <Card className="rider-card-mobile">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 rider-heading-small-mobile">
-              <User className="h-5 w-5" />
-              <span>Profile Information</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="rider-profile-grid-mobile">
-              <div className="rider-profile-item-mobile">
-                <Label className="rider-profile-label-mobile">Name</Label>
-                <p className="rider-profile-value-mobile">{rider.name}</p>
-              </div>
-              <div className="rider-profile-item-mobile">
-                <Label className="rider-profile-label-mobile">Phone</Label>
-                <a href={`tel:${rider.phone}`} className="rider-profile-value-mobile rider-phone-link-mobile">{rider.phone}</a>
-              </div>
-              <div className="rider-profile-item-mobile">
-                <Label className="rider-profile-label-mobile">Status</Label>
-                <Badge variant={rider.status === 'approved' ? 'default' : 'secondary'} className={`rider-badge-mobile ${rider.status === 'approved' ? 'rider-badge-approved-mobile' : rider.status === 'pending' ? 'rider-badge-pending-mobile' : 'rider-badge-rejected-mobile'}`}>
-                  {rider.status}
-                </Badge>
-              </div>
-              <div className="rider-profile-item-mobile">
-                <Label className="rider-profile-label-mobile">Aadhar Number</Label>
-                <p className="rider-profile-value-mobile font-mono text-sm">{rider.aadharNumber}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Assigned Orders */}
-        <Card className="rider-card-mobile">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 rider-heading-small-mobile">
-              <Package className="h-5 w-5" />
-              <span>Assigned Orders</span>
-            </CardTitle>
-            <CardDescription className="rider-text-body-mobile">
-              Orders assigned to you for pickup and delivery
-            </CardDescription>
-          </CardHeader>
           <CardContent>
             {assignedOrders.length === 0 ? (
-              <div className="rider-empty-state-mobile">
-                <Package className="rider-empty-icon-mobile" />
-                <p className="rider-empty-title-mobile">No orders assigned yet</p>
-                <p className="rider-empty-description-mobile">Make sure you're active to receive orders</p>
-              </div>
+              <div className="text-xs text-gray-500">No orders assigned. Go active to receive orders.</div>
             ) : (
               <div className="space-y-2">
-                {assignedOrders
-                  .sort((a, b) => {
-                    const timeA = a.pickupTime || a.scheduled_time || '23:59';
-                    const timeB = b.pickupTime || b.scheduled_time || '23:59';
-                    const dateA = a.pickupDate || a.scheduled_date || '2099-12-31';
-                    const dateB = b.pickupDate || b.scheduled_date || '2099-12-31';
-                    const datetimeA = new Date(`${dateA} ${timeA}`);
-                    const datetimeB = new Date(`${dateB} ${timeB}`);
-                    return datetimeA.getTime() - datetimeB.getTime();
-                  })
-                  .map((order) => {
-                    const isExpanded = expandedOrder === order._id;
-                    return (
-                      <Card key={order._id} className="rider-card-mobile rider-order-card-mobile">
-                        <CardContent className="py-3 px-4">
-                          <div className="flex items-center justify-between">
-                            <div className="min-w-0">
-                              <div className="flex items-center space-x-2">
-                                <h4 className="font-medium text-sm truncate">{order.customerName || ('Order #' + (order.bookingId || order._id))}</h4>
-                                <Badge className="text-xs ml-1">{order.riderStatus}</Badge>
-                              </div>
-                              <div className="text-xs text-gray-500 truncate mt-1">{order.address}</div>
-                              <div className="text-xs text-gray-500 mt-1">{order.pickupTime || order.scheduled_time}</div>
-                            </div>
-
-                            <div className="flex flex-col items-end space-y-2">
-                              <div className="flex space-x-2">
-                                {order.riderStatus === 'assigned' && (
-                                  <button onClick={() => handleOrderAction(order._id, 'accept')} className="bg-laundrify-mint text-white px-3 py-1 rounded text-xs" disabled={!isActive || rider?.status !== 'approved'}>
-                                    Accept
-                                  </button>
-                                )}
-                                <button onClick={() => openGoogleMapsNavigation(order)} className="border px-2 py-1 rounded text-xs">Nav</button>
-                              </div>
-
-                              <button onClick={() => setExpandedOrder(isExpanded ? null : order._id)} className="text-xs text-gray-600">
-                                {isExpanded ? 'Hide' : 'Details'}
-                              </button>
-                            </div>
-                          </div>
-
-                          {isExpanded && (
-                            <div className="mt-3 border-t pt-3">
-                              <div className="text-sm"><strong>Phone:</strong> <a href={`tel:${order.customerPhone}`} className="text-laundrify-blue">{order.customerPhone}</a></div>
-                              <div className="text-sm mt-1"><strong>Type:</strong> {order.type}</div>
-                              <div className="text-sm mt-1"><strong>Order ID:</strong> {order.bookingId || order._id}</div>
-                              <div className="flex mt-3 space-x-2">
-                                {order.riderStatus === 'assigned' && (
-                                  <Button onClick={() => handleOrderAction(order._id, 'accept')} className="rider-primary-action-mobile text-sm">Accept & Navigate</Button>
-                                )}
-                                {order.riderStatus === 'accepted' && (
-                                  <Button onClick={() => handleOrderAction(order._id, 'start')} className="rider-secondary-action-mobile text-sm">Start & Navigate</Button>
-                                )}
-                                {order.riderStatus === 'picked_up' && (
-                                  <Button onClick={() => handleOrderAction(order._id, 'complete')} className="rider-complete-action-mobile text-sm">Complete Delivery</Button>
-                                )}
-                                <Button variant="outline" onClick={() => navigate(`/rider/orders/${order._id}`)} className="text-sm">Edit</Button>
-                              </div>
-                            </div>
-                          )}
-
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                {assignedOrders.map(order => (
+                  <div key={order._id} className="flex items-center justify-between bg-white border rounded p-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{order.customerName || 'Order'}</div>
+                      <div className="text-xs text-gray-500 truncate">{order.address}</div>
+                      <div className="text-xs text-gray-500 mt-1">{order.pickupTime || order.scheduled_time}</div>
+                    </div>
+                    <div className="flex flex-col items-end ml-3 space-y-2">
+                      {order.riderStatus === 'assigned' ? (
+                        <button onClick={() => handleOrderAction(order._id, 'accept')} className="bg-laundrify-mint text-white px-3 py-1 rounded text-xs">Accept</button>
+                      ) : order.riderStatus === 'accepted' ? (
+                        <button onClick={() => handleOrderAction(order._id, 'start')} className="border px-3 py-1 rounded text-xs">Start</button>
+                      ) : order.riderStatus === 'picked_up' ? (
+                        <button onClick={() => handleOrderAction(order._id, 'complete')} className="bg-green-600 text-white px-3 py-1 rounded text-xs">Complete</button>
+                      ) : (
+                        <button onClick={() => openGoogleMapsNavigation(order)} className="border px-2 py-1 rounded text-xs">Nav</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
         </Card>
+
       </div>
     </RiderLayout>
   );
