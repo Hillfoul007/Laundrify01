@@ -318,7 +318,7 @@ router.post("/validate-datetime", async (req, res) => {
     if (date && time) {
       dt = parseDateAndTimeSeparate(date, time);
     } else if (datetime) {
-      dt = parseISTDateTime(String(datetime).trim()) || parseDateAndTimeSeparate(String(datetime).trim(), '');
+      dt = parseFlexibleDateTime(String(datetime).trim()) || parseDateAndTimeSeparate(String(datetime).trim(), '');
     }
     if (!dt) return res.status(200).json({ ok: true, valid: false, reason: "unparseable" });
 
