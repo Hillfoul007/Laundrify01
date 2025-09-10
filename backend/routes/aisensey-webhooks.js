@@ -609,7 +609,7 @@ router.post("/reschedule-order", async (req, res) => {
     }
     if (!booking) return res.status(404).json({ ok: false, reason: "not_found" });
 
-    const dt = parseISTDateTime(new_datetime) || parseDateAndTimeSeparate(new_datetime, '');
+    const dt = parseFlexibleDateTime(new_datetime) || parseDateAndTimeSeparate(new_datetime, '');
     if (!dt) return res.status(400).json({ ok: false, reason: "invalid_datetime" });
 
     const formatted = formatIST(dt);
