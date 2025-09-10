@@ -50,6 +50,26 @@ const parseISTDateTime = (input) => {
   return dateUTC; // represents same wall-clock time in IST
 };
 
+// Helper to parse a time string into {hh, mm} supporting hour-only and AM/PM (e.g. "6", "8am", "9 pm", "9:30pm")
+const parseTimeComponent = (t) => {
+  if (!t || typeof t !== 'string') return null;
+  const s = t.trim();
+  // match hour with optional :mm and optional AM/PM
+  const m = s.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM|am|pm)?$/);
+  if (m) {
+    let hh = parseInt(m[1], 10);
+    const mm = m[2] ? parseInt(m[2], 10) : 0;
+    const ap = m[3];
+    if (ap) {
+      const isPM = ap.toLowerCase() === 'pm';
+      if (isPM && hh < 12) hh += 12;
+      if (!isPM && hh === 12) hh = 0;
+    }
+    return { hh, mm };
+  }
+  return null;
+};
+
 // Parse separate date and time fields with multiple accepted formats
 const parseDateAndTimeSeparate = (dateStr, timeStr) => {
   if (!dateStr) return null;
