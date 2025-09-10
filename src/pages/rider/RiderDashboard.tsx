@@ -372,13 +372,17 @@ export default function RiderDashboard() {
       if (response.ok) {
         toast.success(`Order ${action}ed successfully!`);
 
-        // If accepting or starting an order, open Google Maps navigation
-        if (action === 'accept' || action === 'start') {
+        // If accepting an order, navigate to the order detail screen so rider can edit items and start navigation there
+        if (action === 'accept') {
+          // navigate to rider order detail page
+          navigate(`/rider/orders/${orderId}`);
+        } else if (action === 'start') {
+          // For start action, open navigation if order is present
           const currentOrder = assignedOrders.find(order => order._id === orderId);
           if (currentOrder) {
             setTimeout(() => {
               openGoogleMapsNavigation(currentOrder);
-            }, 1000); // Small delay to allow success message to show
+            }, 500);
           }
         }
 
