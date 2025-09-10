@@ -100,20 +100,14 @@ const parseDateAndTimeSeparate = (dateStr, timeStr) => {
   let hh = 0;
   let mm = 0;
   if (t) {
-    const tm = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?$/);
-    if (tm) {
-      hh = parseInt(tm[1], 10);
-      mm = parseInt(tm[2], 10);
-      const ap = tm[3];
-      if (ap) {
-        const isPM = ap.toLowerCase() === 'pm';
-        if (isPM && hh < 12) hh += 12;
-        if (!isPM && hh === 12) hh = 0;
-      }
+    const parsed = parseTimeComponent(t);
+    if (parsed) {
+      hh = parsed.hh;
+      mm = parsed.mm;
     } else {
-      // support 24h like 23:30
-      const tm2 = t.match(/^(\d{1,2}):(\d{2})$/);
-      if (tm2) { hh = parseInt(tm2[1],10); mm = parseInt(tm2[2],10); }
+      // fallback: try full Date parsing of combined
+      const tryDt = new Date(`${d} ${t}`);
+      if (!isNaN(tryDt.getTime())) return tryDt;
     }
   }
 
