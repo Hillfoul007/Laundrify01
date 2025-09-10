@@ -269,7 +269,7 @@ router.post("/lookup-address-by-phone", async (req, res) => {
 // 2) Validate Address (serviceability within X km)
 router.post("/validate-address", async (req, res) => {
   try {
-    const { address, radius_km = 5 } = req.body || {};
+    const { address, radius_km = 10 } = req.body || {};
     if (!address || typeof address !== "string") {
       return res.status(400).json({ ok: false, reason: "address_required" });
     }
@@ -434,7 +434,7 @@ router.post("/create-order", async (req, res) => {
     // Optional: serviceability check if vendor coords present (use finalLat/finalLng)
     if (vendor_lat && vendor_lng && finalLat && finalLng) {
       const distance_km = haversineKm(Number(vendor_lat), Number(vendor_lng), Number(finalLat), Number(finalLng));
-      if (distance_km > 5) {
+      if (distance_km > 10) {
         return res.status(200).json({ ok: true, accepted: false, reason: "out_of_radius", distance_km: Number(distance_km.toFixed(2)) });
       }
     }
