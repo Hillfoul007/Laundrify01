@@ -367,6 +367,29 @@ export default function RiderLayout({ children }: RiderLayoutProps) {
           {children || <Outlet />}
         </ErrorBoundary>
       </main>
+
+      {/* Mobile bottom nav - simple and always visible on small screens */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t lg:hidden z-50">
+        <div className="max-w-screen-xl mx-auto px-3 py-2 flex items-center justify-between">
+          <button onClick={() => handleNavigation('/rider/dashboard')} className="flex-1 text-center text-sm py-2">
+            <Activity className="mx-auto" />
+            <div className="text-xs mt-1">Home</div>
+          </button>
+          <button onClick={() => handleNavigation('/rider/orders')} className="flex-1 text-center text-sm py-2">
+            <Package className="mx-auto" />
+            <div className="text-xs mt-1">Orders</div>
+          </button>
+          <button onClick={() => handleNavigation('/rider/notifications')} className="flex-1 text-center text-sm py-2">
+            <Bell className="mx-auto" />
+            <div className="text-xs mt-1">Alerts</div>
+          </button>
+          <button onClick={() => handleNavigation('/rider/profile')} className="flex-1 text-center text-sm py-2">
+            <User className="mx-auto" />
+            <div className="text-xs mt-1">Profile</div>
+          </button>
+        </div>
+      </nav>
+
     </div>
   );
 }
