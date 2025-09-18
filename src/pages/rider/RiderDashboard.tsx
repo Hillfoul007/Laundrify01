@@ -489,130 +489,41 @@ export default function RiderDashboard() {
 
   return (
     <RiderLayout>
-      <div className="space-y-6 rider-mobile-layout">
-        {/* Network Status Indicator */}
-        {!isOnline && (
-          <Card className="rider-card-mobile rider-alert-mobile rider-alert-error-mobile">
-            <CardContent className="pt-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                <p className="text-red-800 font-medium rider-text-body-mobile">You're offline</p>
-                <p className="text-red-600 text-sm rider-text-small-mobile">Some features may not work properly</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-
-        {/* Rider Status Alert */}
-        {rider?.status !== 'approved' && (
-          <Card className="rider-card-mobile rider-alert-mobile rider-alert-warning-mobile">
-            <CardContent className="pt-4">
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0 mt-1">
-                  {rider?.status === 'pending' ? (
-                    <Clock className="h-5 w-5 text-orange-500" />
-                  ) : (
-                    <XCircle className="h-5 w-5 text-red-500" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-medium text-orange-800 rider-text-body-mobile">
-                    {rider?.status === 'pending' ? 'Account Pending Approval' : 'Account Rejected'}
-                  </h3>
-                  <p className="text-sm text-orange-700 mt-1 rider-text-small-mobile leading-relaxed">
-                    {rider?.status === 'pending'
-                      ? 'Your account is currently under review by our admin team. You will be notified once approved.'
-                      : `Your account has been rejected. ${rider?.rejectionReason ? 'Reason: ' + rider.rejectionReason : 'Please contact admin for more details.'}`
-                    }
-                  </p>
-                  {rider?.status === 'rejected' && (
-                    <p className="text-sm text-orange-700 mt-2 rider-text-small-mobile">
-                      <strong>Next Steps:</strong> Contact our support team to resubmit your application.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Status Card */}
-        <Card className="rider-card-mobile rider-status-card-mobile">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 rider-heading-small-mobile">
-              <Activity className="h-5 w-5" />
-              <span>Rider Status</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="rider-status-toggle-mobile">
-              <div className="rider-status-info-mobile">
-                <div className="flex items-center justify-center space-x-2 mb-2">
-                  <Label htmlFor="active-toggle" className="status-label">Active Status</Label>
-                  <Badge variant={isActive ? 'default' : 'secondary'} className={`rider-badge-mobile ${isActive ? 'rider-badge-active-mobile' : 'rider-badge-inactive-mobile'}`}>
-                    {isActive ? 'Active' : 'Inactive'}
-                  </Badge>
-                </div>
-                <p className="status-description rider-text-body-mobile">
-                  Toggle to start receiving order assignments
-                </p>
-                {currentLocation && (
-                  <div className="rider-location-status-mobile">
-                    <MapPin className="h-3 w-3" />
-                    <span>Location tracking active</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex justify-center">
-                <Switch
-                  id="active-toggle"
-                  checked={isActive}
-                  onCheckedChange={toggleActiveStatus}
-                  disabled={rider?.status !== 'approved'}
-                  className="rider-toggle-mobile"
-                />
-              </div>
-              {rider?.status !== 'approved' && (
-                <p className="text-xs text-gray-500 text-center mt-2 rider-text-small-mobile">
-                  Only approved riders can go active
-                </p>
-              )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-lg font-semibold">Assigned Orders</h2>
+              <div className="text-sm text-muted-foreground">Tap an order to view details, edit items or start navigation</div>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex items-center gap-2">
+              <div className="text-sm">Beep: {beeping ? 'On' : 'Off'}</div>
+              <Button size="sm" variant="ghost" onClick={() => (beeping ? stopBeepLoop() : startBeepLoop())}>{beeping ? 'Stop Alert' : 'Start Alert'}</Button>
+            </div>
+          </div>
 
-        <Card className="rider-card-mobile">
-          <CardContent>
-            {assignedOrders.length === 0 ? (
-              <div className="text-xs text-gray-500">No orders assigned. Go active to receive orders.</div>
-            ) : (
-              <div className="space-y-2">
-                {assignedOrders.map(order => (
-                  <div key={order._id} className="flex items-center justify-between bg-white border rounded p-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">{order.customerName || 'Order'}</div>
-                      <div className="text-xs text-gray-500 truncate">{order.address}</div>
-                      <div className="text-xs text-gray-500 mt-1">{order.pickupTime || order.scheduled_time}</div>
-                    </div>
-                    <div className="flex flex-col items-end ml-3 space-y-2">
-                      {order.riderStatus === 'assigned' ? (
-                        <button onClick={() => handleOrderAction(order._id, 'accept')} className="bg-laundrify-mint text-white px-3 py-1 rounded text-xs">Accept</button>
-                      ) : order.riderStatus === 'accepted' ? (
-                        <button onClick={() => handleOrderAction(order._id, 'start')} className="border px-3 py-1 rounded text-xs">Start</button>
-                      ) : order.riderStatus === 'picked_up' ? (
-                        <button onClick={() => handleOrderAction(order._id, 'complete')} className="bg-green-600 text-white px-3 py-1 rounded text-xs">Complete</button>
-                      ) : (
-                        <button onClick={() => openGoogleMapsNavigation(order)} className="border px-2 py-1 rounded text-xs">Nav</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          {assignedOrders.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No assigned orders right now.</div>
+          ) : (
+            assignedOrders.map((o) => (
+              <OrderCard
+                key={o._id}
+                order={o}
+                onAccept={(id) => handleOrderAction(id, 'accept')}
+                onReject={(id) => handleReject(id)}
+                onStart={(id) => handleOrderAction(id, 'start')}
+                onComplete={(id) => handleOrderAction(id, 'complete')}
+                onNavigate={(order) => openGoogleMapsNavigation(order)}
+                onEditCart={(order) => handleEditCart(order)}
+              />
+            ))
+          )}
+        </div>
 
+        <aside className="lg:col-span-1">
+          <EarningsDashboard daily={earnings.daily} weekly={earnings.weekly} onRefresh={fetchEarningsSummary} />
+          <TrainingVideo videoUrl={undefined} />
+        </aside>
       </div>
     </RiderLayout>
   );
