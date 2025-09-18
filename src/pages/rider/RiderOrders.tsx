@@ -1523,6 +1523,33 @@ export default function RiderOrders() {
     </CardContent>
   </Card>
 
+  {/* Customer OTP Confirmation */}
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center space-x-2">
+        <Lock className="h-5 w-5" />
+        <span>Customer OTP Confirmation</span>
+      </CardTitle>
+      <CardDescription>
+        Request an OTP to the customer and verify it when picking up or delivering items.
+      </CardDescription>
+    </CardHeader>
+    <CardContent>
+      <div className="flex items-center gap-3">
+        <Button size="sm" onClick={() => requestCustomerOTP('pickup')}>Request Pickup OTP</Button>
+        <Button size="sm" onClick={() => requestCustomerOTP('delivery')}>Request Delivery OTP</Button>
+        <div className="flex items-center gap-2 ml-auto">
+          <input type="text" value={customerOtp} onChange={(e) => setCustomerOtp(e.target.value.replace(/\D/g, '').slice(0,6))} placeholder="Enter OTP" className="px-3 py-2 border rounded text-sm" />
+          <Button size="sm" onClick={() => verifyCustomerOTP('pickup')} disabled={otpVerifying}>{otpVerifying ? 'Verifying...' : 'Verify Pickup'}</Button>
+          <Button size="sm" variant="outline" onClick={() => verifyCustomerOTP('delivery')} disabled={otpVerifying}>{otpVerifying ? 'Verifying...' : 'Verify Delivery'}</Button>
+        </div>
+      </div>
+      {otpRequested && (
+        <p className="text-sm text-green-600 mt-2">OTP has been requested to the customer. Please ask them for the code.</p>
+      )}
+    </CardContent>
+  </Card>
+
         {/* Order Items */}
   <Card>
           <CardHeader>
