@@ -122,6 +122,52 @@ export default function RiderDashboard() {
     }
   };
 
+  // Play a synthetic beep loop using WebAudio until stopped (no asset required)
+  const startBeepLoop = () => {
+    if (audioRef.current) return;
+    try {
+      const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioContext();
+      const master = ctx.createGain();
+      master.gain.value = 0.05; // low volume
+      master.connect(ctx.destination);
+
+      const play = () => {
+        const osc = ctx.createOscillator();
+        const env = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 880;
+        osc.connect(env);
+        env.connect(master);
+        env.gain.value = 0;
+        const now = ctx.currentTime;
+        env.gain.linearRampToValueAtTime(0.05, now + 0.01);
+        env.gain.linearRampToValueAtTime(0.0, now + 0.35);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      };
+
+      const interval = window.setInterval(play, 600);
+      audioRef.current = {
+        stop: () => {
+          clearInterval(interval);
+          try { ctx.close(); } catch (e) {}
+          audioRef.current = null;
+        }
+      };
+      setBeeping(true);
+    } catch (e) {
+      console.warn('Beep unavailable', e);
+    }
+  };
+
+  const stopBeepLoop = () => {
+    if (audioRef.current) {
+      audioRef.current.stop();
+      setBeeping(false);
+    }
+  };
+
   const updateLocationOnServer = async (location: {lat: number, lng: number}) => {
     try {
       const token = localStorage.getItem('riderToken');
