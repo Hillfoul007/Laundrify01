@@ -20,6 +20,9 @@ import { toast } from 'sonner';
 import RiderLayout from '@/components/rider/RiderLayout';
 import RiderNotifications from '@/components/rider/RiderNotifications';
 import { getRiderApiUrl } from '@/lib/riderApi';
+import OrderCard from '@/components/rider/OrderCard';
+import EarningsDashboard from '@/components/rider/EarningsDashboard';
+import TrainingVideo from '@/components/rider/TrainingVideo';
 
 export default function RiderDashboard() {
   const navigate = useNavigate();
