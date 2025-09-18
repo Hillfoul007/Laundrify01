@@ -461,6 +461,28 @@ export default function RiderDashboard() {
     }
   };
 
+  const handleReject = async (orderId: string) => {
+    await handleOrderAction(orderId, 'reject');
+  };
+
+  const handleEditCart = (order: any) => {
+    navigate(`/rider/orders/${order._id}`, { state: { editCart: true } });
+  };
+
+  const fetchEarningsSummary = async () => {
+    try {
+      const token = localStorage.getItem('riderToken');
+      if (!token) return;
+      const apiUrl = getRiderApiUrl('/earnings/summary');
+      const r = await fetch(apiUrl, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) return;
+      const data = await r.json();
+      setEarnings({ daily: data.daily || 0, weekly: data.weekly || 0 });
+    } catch (e) {
+      console.warn('Failed to fetch earnings', e);
+    }
+  };
+
   if (!rider) {
     return <div>Loading...</div>;
   }
