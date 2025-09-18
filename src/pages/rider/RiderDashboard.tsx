@@ -34,6 +34,9 @@ export default function RiderDashboard() {
   const [locationWatcher, setLocationWatcher] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [lastFetchError, setLastFetchError] = useState<string | null>(null);
+  const [beeping, setBeeping] = useState(false);
+  const audioRef = React.useRef<{ stop: () => void } | null>(null);
+  const [earnings, setEarnings] = useState<{ daily: number; weekly: number }>({ daily: 0, weekly: 0 });
 
   useEffect(() => {
     // Load rider data
