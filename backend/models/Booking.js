@@ -136,6 +136,15 @@ const bookingSchema = new mongoose.Schema(
         default: null,
       },
     },
+    // Photos uploaded by rider at pickup/delivery
+    pickup_photos: {
+      type: [String],
+      default: []
+    },
+    delivery_photos: {
+      type: [String],
+      default: []
+    },
     additional_details: {
       type: String,
       default: "",
