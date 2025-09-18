@@ -469,12 +469,42 @@ export default function RiderDashboard() {
           // navigate to rider order detail page
           navigate(`/rider/orders/${orderId}`, { state: { fromAccept: true } });
         } else if (action === 'start') {
-          // For start action, open navigation if order is present
+          // For start action, if OTP not verified, request OTP via order-action and prompt rider to verify
           const currentOrder = assignedOrders.find(order => order._id === orderId);
           if (currentOrder) {
-            setTimeout(() => {
-              openGoogleMapsNavigation(currentOrder);
-            }, 500);
+            // if order requires OTP (we'll request it by sending requireOtp=true)
+            const shouldRequestOtp = true; // always request before starting
+            if (shouldRequestOtp) {
+              // ask backend to send OTP
+              await fetch(getRiderApiUrl('/order-action'), {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ orderId, action, riderId: rider?._id, location: currentLocation, requireOtp: true })
+              }).then(async (r) => {
+                const d = await r.json().catch(() => ({}));
+                if (r.ok && d.need_verification) {
+                  toast.success('OTP sent to customer. Please verify to start the pickup.');
+                  // open order detail so rider can verify OTP
+                  navigate(`/rider/orders/${orderId}`, { state: { fromAccept: true } });
+                } else {
+                  // Fallback: proceed with starting normally
+                  setTimeout(() => {
+                    openGoogleMapsNavigation(currentOrder);
+                  }, 500);
+                }
+              }).catch(() => {
+                setTimeout(() => {
+                  openGoogleMapsNavigation(currentOrder);
+                }, 500);
+              });
+            } else {
+              setTimeout(() => {
+                openGoogleMapsNavigation(currentOrder);
+              }, 500);
+            }
           }
         }
 
