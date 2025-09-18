@@ -953,6 +953,48 @@ router.get('/earnings/summary', verifyRiderToken, async (req, res) => {
   }
 });
 
+// Export earnings CSV for date range: ?start=YYYY-MM-DD&end=YYYY-MM-DD
+router.get('/earnings/export', verifyRiderToken, async (req, res) => {
+  try {
+    const riderId = req.rider.riderId;
+    const { start, end } = req.query || {};
+
+    const startDate = start ? new Date(String(start)) : new Date(new Date().getTime() - 30*24*60*60*1000);
+    const endDate = end ? new Date(String(end)) : new Date();
+
+    // Normalize to day boundaries
+    startDate.setHours(0,0,0,0);
+    endDate.setHours(23,59,59,999);
+
+    const records = await Booking.find({
+      assignedRider: riderId,
+      status: { $in: ['completed','delivered'] },
+      updated_at: { $gte: startDate, $lte: endDate }
+    }).sort({ updated_at: -1 });
+
+    // Build CSV
+    const rows = [['order_id','date','amount','customer_phone','status']];
+    records.forEach(r => {
+      rows.push([
+        r.custom_order_id || String(r._id),
+        r.updated_at ? new Date(r.updated_at).toISOString() : '',
+        String(r.final_amount || 0),
+        r.phone || (r.customer_id && r.customer_id.phone) || '',
+        r.riderStatus || r.status || ''
+      ]);
+    });
+
+    const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(',')).join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="earnings_${riderId}_${startDate.toISOString().slice(0,10)}_${endDate.toISOString().slice(0,10)}.csv"`);
+    res.send(csv);
+  } catch (error) {
+    console.error('❌ Earnings export error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Helper function to calculate price change
 function calculatePriceChange(items) {
   const total = items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
