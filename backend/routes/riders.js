@@ -875,6 +875,84 @@ router.get('/orders/:orderId', verifyRiderToken, async (req, res) => {
   }
 });
 
+// Upload pickup/delivery photo for an order
+router.post('/orders/:orderId/upload-photo', verifyRiderToken, upload.single('photo'), async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const type = (req.query.type || req.body.type || 'pickup').toString().toLowerCase(); // 'pickup' or 'delivery'
+
+    console.log('📸 Upload photo request:', { orderId, type, hasFile: !!req.file, rider: req.rider?.riderId });
+
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+    // Save relative path
+    const relativePath = `/uploads/orders/${req.file.filename}`;
+
+    // Demo mode: just return
+    if (!mongoose.connection.readyState) {
+      return res.json({ success: true, url: relativePath, mode: 'demo' });
+    }
+
+    // Update booking document
+    const booking = await Booking.findById(orderId);
+    if (!booking) return res.status(404).json({ message: 'Order not found' });
+
+    if (type === 'delivery' || type.startsWith('del')) {
+      booking.delivery_photos = booking.delivery_photos || [];
+      booking.delivery_photos.push(relativePath);
+    } else {
+      booking.pickup_photos = booking.pickup_photos || [];
+      booking.pickup_photos.push(relativePath);
+    }
+
+    await booking.save();
+
+    res.json({ success: true, url: relativePath });
+  } catch (error) {
+    console.error('❌ Upload photo error:', error);
+    res.status(500).json({ success: false, message: 'Upload failed', error: error.message });
+  }
+});
+
+// Earnings summary for rider (daily/weekly)
+router.get('/earnings/summary', verifyRiderToken, async (req, res) => {
+  try {
+    console.log('🔍 Earnings summary request for rider:', req.rider?.riderId);
+
+    if (!mongoose.connection.readyState) {
+      return res.json({ daily: 0, weekly: 0, mode: 'demo' });
+    }
+
+    const riderId = req.rider.riderId;
+    const now = new Date();
+
+    // Start of today (local server tz)
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Start of week (7 days ago)
+    const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    startOfWeek.setHours(0,0,0,0);
+
+    const dailyAgg = await Booking.aggregate([
+      { $match: { assignedRider: mongoose.Types.ObjectId(riderId), status: { $in: ['completed','delivered'] }, updated_at: { $gte: startOfToday } } },
+      { $group: { _id: null, total: { $sum: '$final_amount' } } }
+    ]);
+
+    const weeklyAgg = await Booking.aggregate([
+      { $match: { assignedRider: mongoose.Types.ObjectId(riderId), status: { $in: ['completed','delivered'] }, updated_at: { $gte: startOfWeek } } },
+      { $group: { _id: null, total: { $sum: '$final_amount' } } }
+    ]);
+
+    const daily = (dailyAgg && dailyAgg[0] && dailyAgg[0].total) ? dailyAgg[0].total : 0;
+    const weekly = (weeklyAgg && weeklyAgg[0] && weeklyAgg[0].total) ? weeklyAgg[0].total : 0;
+
+    res.json({ daily, weekly });
+  } catch (error) {
+    console.error('❌ Earnings summary error:', error);
+    res.status(500).json({ daily:0, weekly:0, error: error.message });
+  }
+});
+
 // Helper function to calculate price change
 function calculatePriceChange(items) {
   const total = items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
