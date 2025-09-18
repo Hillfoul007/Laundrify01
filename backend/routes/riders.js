@@ -1531,8 +1531,17 @@ router.post('/order-action', verifyRiderToken, async (req, res) => {
       return res.status(400).json({ message: 'Invalid action' });
     }
 
-    // For demo mode, just return success
+    // If requireOtp requested, generate OTP and send to customer, respond with need_verification
+    const { requireOtp } = req.body || {};
+
+    // For demo mode, handle requireOtp as well
     if (!mongoose.connection.readyState) {
+      if (requireOtp) {
+        // demo mode: log and return need_verification
+        console.log('🔧 Demo mode: OTP requested for order action');
+        return res.json({ need_verification: true, message: 'OTP requested (demo mode)' });
+      }
+
       console.log('🔧 Demo mode: Order action accepted');
       return res.json({
         message: `Order ${action}ed successfully (demo mode)`,
@@ -1549,6 +1558,18 @@ router.post('/order-action', verifyRiderToken, async (req, res) => {
       _id: orderId,
       assignedRider: req.rider.riderId
     });
+
+    // If OTP verification is required before performing the action
+    if (requireOtp) {
+      const phone = order ? (order.phone || order.customerPhone || (order.customer_id && order.customer_id.phone)) : null;
+      if (!phone) {
+        return res.status(404).json({ success: false, message: 'Customer phone not found for OTP' });
+      }
+      const otp = otpService.generateOTP();
+      otpService.storeOTP(phone, otp, action === 'start' ? 'pickup' : 'delivery');
+      await otpService.sendOTP(phone, otp, action === 'start' ? 'pickup' : 'delivery');
+      return res.json({ need_verification: true, message: 'OTP sent to customer' });
+    }
 
     if (!order) {
       console.log('❌ Order not found, using demo response');
