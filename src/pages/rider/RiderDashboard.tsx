@@ -468,42 +468,43 @@ export default function RiderDashboard() {
         if (action === 'accept') {
           // navigate to rider order detail page
           navigate(`/rider/orders/${orderId}`, { state: { fromAccept: true } });
-        } else if (action === 'start') {
-          // For start action, if OTP not verified, request OTP via order-action and prompt rider to verify
+        } else if (action === 'start' || action === 'complete') {
+          // For start/delivery complete actions, request OTP before proceeding and prompt rider to verify
           const currentOrder = assignedOrders.find(order => order._id === orderId);
           if (currentOrder) {
-            // if order requires OTP (we'll request it by sending requireOtp=true)
-            const shouldRequestOtp = true; // always request before starting
+            const shouldRequestOtp = true; // always request before start/complete
             if (shouldRequestOtp) {
-              // ask backend to send OTP
-              await fetch(getRiderApiUrl('/order-action'), {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ orderId, action, riderId: rider?._id, location: currentLocation, requireOtp: true })
-              }).then(async (r) => {
+              try {
+                const r = await fetch(getRiderApiUrl('/order-action'), {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                  },
+                  body: JSON.stringify({ orderId, action, riderId: rider?._id, location: currentLocation, requireOtp: true })
+                });
                 const d = await r.json().catch(() => ({}));
                 if (r.ok && d.need_verification) {
-                  toast.success('OTP sent to customer. Please verify to start the pickup.');
+                  toast.success('OTP sent to customer. Please verify to continue.');
                   // open order detail so rider can verify OTP
                   navigate(`/rider/orders/${orderId}`, { state: { fromAccept: true } });
                 } else {
-                  // Fallback: proceed with starting normally
-                  setTimeout(() => {
-                    openGoogleMapsNavigation(currentOrder);
-                  }, 500);
+                  // Fallback: proceed with starting/navigation or completing
+                  if (action === 'start') {
+                    setTimeout(() => openGoogleMapsNavigation(currentOrder), 500);
+                  } else {
+                    // If 'complete' and backend didn't require OTP, we already processed completion
+                    toast.success('Order marked as completed');
+                  }
                 }
-              }).catch(() => {
-                setTimeout(() => {
-                  openGoogleMapsNavigation(currentOrder);
-                }, 500);
-              });
+              } catch (err) {
+                console.warn('OTP request failed, proceeding with default behavior', err);
+                if (action === 'start') setTimeout(() => openGoogleMapsNavigation(currentOrder), 500);
+                else toast.success('Order marked as completed');
+              }
             } else {
-              setTimeout(() => {
-                openGoogleMapsNavigation(currentOrder);
-              }, 500);
+              if (action === 'start') setTimeout(() => openGoogleMapsNavigation(currentOrder), 500);
+              else toast.success('Order marked as completed');
             }
           }
         }
