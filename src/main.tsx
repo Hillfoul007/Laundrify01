@@ -14,7 +14,9 @@ if (SENTRY_DSN) {
     // Lazy import to avoid build errors when Sentry not installed/configured
     try {
       const modulePath = '@sentry' + '/react';
-      const Sentry = await import(modulePath);
+      // Use @vite-ignore to avoid static analysis when Sentry isn't installed
+      // @ts-ignore
+      const Sentry = await import(/* @vite-ignore */ modulePath);
       Sentry.init({
         dsn: SENTRY_DSN,
         tracesSampleRate: 0.1,
