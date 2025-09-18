@@ -581,7 +581,7 @@ export default function RiderOrders() {
   const fetchOrderDetails = async (id: string) => {
     // Helper function to use mock data
     const useMockData = (reason: string) => {
-      console.log(`📋 Using mock data: ${reason}`);
+      console.log(`���� Using mock data: ${reason}`);
       console.log('📋 Order ID being processed:', id);
       const mockData = getMockOrderData(id);
 
@@ -1294,6 +1294,67 @@ export default function RiderOrders() {
   }
 
   const totalAmount = editedItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+
+  const [customerOtp, setCustomerOtp] = useState('');
+  const [otpRequested, setOtpRequested] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+
+  const requestCustomerOTP = async (type: 'pickup'|'delivery') => {
+    try {
+      const token = localStorage.getItem('riderToken');
+      const apiUrl = getRiderApiUrl(`/orders/${orderId}/request-customer-otp`);
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ type })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success !== false) {
+        setOtpRequested(true);
+        toast.success('OTP requested to customer');
+      } else {
+        toast.error(data.message || 'Failed to request OTP');
+      }
+    } catch (err) {
+      console.error('Request customer OTP error', err);
+      toast.error('Failed to request OTP');
+    }
+  };
+
+  const verifyCustomerOTP = async (type: 'pickup'|'delivery') => {
+    if (!customerOtp) return toast.error('Enter OTP');
+    try {
+      setOtpVerifying(true);
+      const token = localStorage.getItem('riderToken');
+      const apiUrl = getRiderApiUrl(`/orders/${orderId}/verify-customer-otp`);
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ otp: customerOtp, type })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        toast.success('OTP verified');
+        setOtpRequested(false);
+        setCustomerOtp('');
+        // Refresh order details
+        fetchOrderDetails(orderId!);
+      } else {
+        toast.error(data.message || 'OTP verification failed');
+      }
+    } catch (err) {
+      console.error('Verify customer OTP error', err);
+      toast.error('OTP verification failed');
+    } finally {
+      setOtpVerifying(false);
+    }
+  };
 
   return (
     <RiderLayout>
