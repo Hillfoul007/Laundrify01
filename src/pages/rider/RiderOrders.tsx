@@ -1409,8 +1409,62 @@ export default function RiderOrders() {
           </CardContent>
         </Card>
 
+        {/* Photos (Pickup / Delivery) */}
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center space-x-2">
+        <Package className="h-5 w-5" />
+        <span>Pickup / Delivery Photos</span>
+      </CardTitle>
+      <CardDescription>
+        Upload proof photos during pickup or delivery. Photos will be attached to the order record.
+      </CardDescription>
+    </CardHeader>
+    <CardContent>
+      <div className="flex flex-col gap-3">
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-medium">Pickup Photos</div>
+            <div className="flex items-center gap-2">
+              <input ref={pickupInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileInputChange(e, 'pickup')} />
+              <Button size="sm" onClick={triggerPickupInput}>Upload Pickup Photo</Button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto">
+            {(order?.pickup_photos || pickupPhotos || []).map((p: string, i: number) => (
+              <img key={p + i} src={p} alt={`pickup-${i}`} className="h-20 w-20 object-cover rounded-md border" />
+            ))}
+            {((order?.pickup_photos || pickupPhotos || []).length === 0) && (
+              <div className="text-xs text-gray-500">No pickup photos uploaded</div>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-medium">Delivery Photos</div>
+            <div className="flex items-center gap-2">
+              <input ref={deliveryInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileInputChange(e, 'delivery')} />
+              <Button size="sm" onClick={triggerDeliveryInput}>Upload Delivery Photo</Button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto">
+            {(order?.delivery_photos || deliveryPhotos || []).map((p: string, i: number) => (
+              <img key={p + i} src={p} alt={`delivery-${i}`} className="h-20 w-20 object-cover rounded-md border" />
+            ))}
+            {((order?.delivery_photos || deliveryPhotos || []).length === 0) && (
+              <div className="text-xs text-gray-500">No delivery photos uploaded</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+
         {/* Order Items */}
-        <Card>
+  <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
               <CardTitle className="flex items-center space-x-2">
