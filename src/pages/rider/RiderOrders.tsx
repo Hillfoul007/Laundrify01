@@ -62,6 +62,10 @@ export default function RiderOrders() {
   const [originalTotal, setOriginalTotal] = useState(0);
   const [deliveryDate, setDeliveryDate] = useState('');
   const [deliveryTime, setDeliveryTime] = useState('');
+  const [pickupPhotos, setPickupPhotos] = useState<string[]>([]);
+  const [deliveryPhotos, setDeliveryPhotos] = useState<string[]>([]);
+  const pickupInputRef = useRef<HTMLInputElement | null>(null);
+  const deliveryInputRef = useRef<HTMLInputElement | null>(null);
 
   // Initialize customer verification service
   const verificationService = CustomerVerificationService.getInstance();
