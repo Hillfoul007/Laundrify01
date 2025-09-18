@@ -1437,6 +1437,20 @@ router.put('/orders/:orderId/update', verifyRiderToken, async (req, res) => {
         });
 
         console.log('✅ Customer notification created successfully:', notification._id);
+
+        // Send SMS to customer summarizing the change (best-effort)
+        try {
+          const customerPhone = order.customer_id?.phone || notificationData.customerPhone;
+          const summary = notificationData.riderChanges && notificationData.riderChanges.priceChange !== undefined ?
+            `Price changed by ₹${notificationData.riderChanges.priceChange}` : 'Order updated by rider';
+          if (customerPhone) {
+            await otpService.sendSMS(customerPhone, `Your order ${order.custom_order_id || order._id} has changes: ${summary}. Please check your app to approve.`, 'order_update');
+            console.log('📱 SMS sent to customer about verification');
+          }
+        } catch (smsErr) {
+          console.warn('❌ Failed to send SMS to customer about verification:', smsErr);
+        }
+
       } catch (notificationError) {
         console.error('❌ Failed to create customer notification:', notificationError);
       }
