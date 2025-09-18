@@ -1438,6 +1438,84 @@ router.put('/orders/:orderId/update', verifyRiderToken, async (req, res) => {
   }
 });
 
+// Request OTP to customer for pickup/delivery confirmation
+router.post('/orders/:orderId/request-customer-otp', verifyRiderToken, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { type = 'pickup' } = req.body || {};
+
+    // Find booking or quick pickup
+    let booking = await Booking.findById(orderId);
+    let phone = null;
+    if (booking) phone = booking.phone || booking.customerPhone;
+    else {
+      const quick = await QuickPickup.findById(orderId);
+      if (quick) phone = quick.customer_phone || quick.customerPhone;
+    }
+
+    if (!phone) return res.status(404).json({ success: false, message: 'Order or customer phone not found' });
+
+    const otp = otpService.generateOTP();
+    otpService.storeOTP(phone, otp, type);
+    const smsResult = await otpService.sendOTP(phone, otp, type);
+
+    // Additionally log/create notification
+    try {
+      await notificationService.sendSMS(phone, `Your ${type} OTP is ${otp}. It is valid for 10 minutes.`, 'customer_otp');
+    } catch (err) {
+      console.warn('Failed to send notification SMS via notificationService', err);
+    }
+
+    res.json({ success: smsResult.success, message: smsResult.message || 'OTP requested' });
+  } catch (error) {
+    console.error('Request customer OTP error:', error);
+    res.status(500).json({ success: false, message: 'Failed to request OTP', error: error.message });
+  }
+});
+
+// Verify customer OTP for pickup/delivery
+router.post('/orders/:orderId/verify-customer-otp', verifyRiderToken, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { otp, type = 'pickup' } = req.body || {};
+
+    if (!otp) return res.status(400).json({ success: false, message: 'OTP is required' });
+
+    // Find booking or quick pickup
+    let booking = await Booking.findById(orderId);
+    let phone = null;
+    if (booking) phone = booking.phone || booking.customerPhone;
+    else {
+      const quick = await QuickPickup.findById(orderId);
+      if (quick) phone = quick.customer_phone || quick.customerPhone;
+    }
+
+    if (!phone) return res.status(404).json({ success: false, message: 'Order or customer phone not found' });
+
+    const verification = otpService.verifyOTP(phone, otp, type);
+    if (!verification.success) {
+      return res.status(400).json({ success: false, message: verification.error, attemptsRemaining: verification.attemptsRemaining });
+    }
+
+    // Optionally update booking status
+    if (booking) {
+      if (type === 'pickup') {
+        booking.riderStatus = 'picked_up';
+        booking.pickedUpAt = new Date();
+      } else {
+        booking.riderStatus = 'completed';
+        booking.completedAt = new Date();
+      }
+      await booking.save();
+    }
+
+    res.json({ success: true, message: 'OTP verified' });
+  } catch (error) {
+    console.error('Verify customer OTP error:', error);
+    res.status(500).json({ success: false, message: 'Failed to verify OTP', error: error.message });
+  }
+});
+
 // Handle order actions (accept, start, complete)
 router.post('/order-action', verifyRiderToken, async (req, res) => {
   try {
