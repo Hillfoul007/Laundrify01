@@ -346,6 +346,9 @@ export default function RiderDashboard() {
       }
     ];
     setAssignedOrders(demoOrders);
+
+    // Demo beep for demo orders
+    startBeepLoop();
   };
 
   const openGoogleMapsNavigation = (order: any) => {
