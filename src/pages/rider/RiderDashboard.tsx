@@ -50,6 +50,9 @@ export default function RiderDashboard() {
     // Load assigned orders
     fetchAssignedOrders();
 
+    // Load earnings summary (demo or real if API available)
+    fetchEarningsSummary();
+
     // Network status listeners
     const handleOnline = () => {
       setIsOnline(true);
