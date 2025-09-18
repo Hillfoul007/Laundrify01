@@ -379,6 +379,36 @@ export default function RiderDashboard() {
     }, 500);
   };
 
+  const openOptimizedRoute = (orders: any[]) => {
+    if (!currentLocation) {
+      toast.error('Current location not available. Please enable location services.');
+      return;
+    }
+
+    const validOrders = (orders || []).filter(o => o && (o.address || (o.coordinates && o.coordinates.lat)));
+    if (validOrders.length < 2) {
+      toast.error('Need at least 2 orders with addresses to optimize route');
+      return;
+    }
+
+    // Build waypoints list (up to 8 intermediate waypoints)
+    const waypointLimit = 8;
+    const waypoints = validOrders.slice(0, waypointLimit + 1).map(o => encodeURIComponent(o.address || `${o.coordinates.lat},${o.coordinates.lng}`));
+
+    const origin = `${currentLocation.lat},${currentLocation.lng}`;
+    const destination = waypoints[waypoints.length - 1];
+    const intermediate = waypoints.slice(0, waypoints.length - 1).join('|');
+
+    const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving${intermediate ? `&waypoints=${intermediate}` : ''}`;
+
+    toast.loading('Opening optimized route...', { id: 'optimize' });
+    window.open(mapsUrl, '_blank');
+    setTimeout(() => {
+      toast.dismiss('optimize');
+      toast.success('Optimized route opened in Google Maps');
+    }, 600);
+  };
+
   const handleOrderAction = async (orderId: string, action: 'accept' | 'start' | 'complete') => {
     try {
       // Validate rider status first
