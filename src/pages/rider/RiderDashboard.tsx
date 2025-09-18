@@ -299,6 +299,10 @@ export default function RiderDashboard() {
         const orders = await response.json();
         setAssignedOrders(Array.isArray(orders) ? orders : []);
         setLastFetchError(null); // Clear any previous errors
+
+        // If there are new assigned orders that are not yet accepted, start the beep reminder
+        const shouldBeep = (Array.isArray(orders) ? orders : []).some((o: any) => o.riderStatus === 'assigned');
+        if (shouldBeep) startBeepLoop();
       } else {
         console.warn('Failed to fetch assigned orders:', response.status, response.statusText);
         setLastFetchError(`Server error: ${response.status}`);
