@@ -499,6 +499,9 @@ export default function RiderDashboard() {
             <div className="flex items-center gap-2">
               <div className="text-sm">Beep: {beeping ? 'On' : 'Off'}</div>
               <Button size="sm" variant="ghost" onClick={() => (beeping ? stopBeepLoop() : startBeepLoop())}>{beeping ? 'Stop Alert' : 'Start Alert'}</Button>
+              <Button size="sm" variant="outline" onClick={() => openOptimizedRoute(assignedOrders)} disabled={!currentLocation || assignedOrders.length < 2}>
+                Optimize Route
+              </Button>
             </div>
           </div>
 
