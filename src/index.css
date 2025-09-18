@@ -1,5 +1,5 @@
-@tailwind base;
 @import './styles/rider-mobile.css';
+@tailwind base;
 
 @tailwind components;
 @tailwind utilities;
