@@ -834,6 +834,50 @@ export default function RiderOrders() {
     }
   };
 
+  // Upload photo helper
+  const handleUploadPhotoFile = async (type: 'pickup' | 'delivery', file: File) => {
+    if (!file || !orderId) return;
+    try {
+      const token = localStorage.getItem('riderToken');
+      const apiUrl = getRiderApiUrl(`/orders/${orderId}/upload-photo?type=${type}`);
+      const fd = new FormData();
+      fd.append('photo', file, file.name);
+
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) {
+        if (type === 'delivery') {
+          setDeliveryPhotos(prev => [...prev, data.url]);
+          setOrder(prev => ({ ...prev, delivery_photos: [...(prev.delivery_photos || []), data.url] }));
+        } else {
+          setPickupPhotos(prev => [...prev, data.url]);
+          setOrder(prev => ({ ...prev, pickup_photos: [...(prev.pickup_photos || []), data.url] }));
+        }
+        toast.success('Photo uploaded successfully');
+      } else {
+        toast.error(data.message || 'Upload failed');
+      }
+    } catch (error) {
+      console.error('Upload photo error:', error);
+      toast.error('Upload failed. Please try again.');
+    }
+  };
+
+  const triggerPickupInput = () => pickupInputRef.current?.click();
+  const triggerDeliveryInput = () => deliveryInputRef.current?.click();
+
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'pickup'|'delivery') => {
+    const file = e.target.files?.[0];
+    if (file) await handleUploadPhotoFile(type, file);
+    // Clear value to allow reuploading same file if needed
+    if (e.target) e.target.value = '';
+  };
+
   const saveOrderChanges = async () => {
     // If verification is required and not approved, show error
     if (verificationStatus && verificationStatus !== 'approved') {
