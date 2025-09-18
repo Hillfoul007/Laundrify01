@@ -1579,6 +1579,19 @@ router.post('/order-action', verifyRiderToken, async (req, res) => {
 
     await order.save();
 
+    // Notify customer via SMS and create notification
+    try {
+      const customerPhone = order.phone || (order.customer_id && order.customer_id.phone) || order.customerPhone;
+      const riderInfo = { id: req.rider.riderId };
+      const msg = `Your order ${order.custom_order_id || order._id} is now ${order.riderStatus}.`;
+      if (customerPhone) {
+        await otpService.sendSMS(customerPhone, msg, 'order_status');
+      }
+      try { await notificationService.createOrderUpdateNotification(order.customer_id || null, order, riderInfo, { action }); } catch (err) { console.warn('Failed to create notification record', err); }
+    } catch (notifyErr) {
+      console.warn('Failed to notify customer about order action', notifyErr);
+    }
+
     res.json({
       message: `Order ${action}ed successfully`,
       order,
