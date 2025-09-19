@@ -521,7 +521,7 @@ export default function RiderDashboard() {
     };
   }, []);
 
-  const handleOrderAction = async (orderId: string, action: 'accept' | 'start' | 'complete') => {
+  const handleOrderAction = async (orderId: string, action: 'accept' | 'start' | 'complete' | 'reject') => {
     try {
       // Validate rider status first
       if (!rider) {
