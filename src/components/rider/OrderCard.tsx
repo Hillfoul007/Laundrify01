@@ -88,7 +88,7 @@ export default function OrderCard({
             </Button>
           )}
 
-          {statusLabel === 'on_the_way' && (
+          {(statusLabel === 'on_the_way' || statusLabel === 'picked_up') && (
             <Button size="sm" onClick={() => onComplete(order._id)}>
               Delivered
             </Button>
