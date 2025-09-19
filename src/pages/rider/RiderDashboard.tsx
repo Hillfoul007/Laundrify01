@@ -439,6 +439,33 @@ export default function RiderDashboard() {
   const [otpType, setOtpType] = useState<'pickup'|'delivery'>('pickup');
   const [otpValue, setOtpValue] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
+  const [resendCountdown, setResendCountdown] = useState<number>(0);
+  const resendTimerRef = React.useRef<number | null>(null);
+
+  const startResendCountdown = (seconds: number = 30) => {
+    setResendCountdown(seconds);
+    if (resendTimerRef.current) window.clearInterval(resendTimerRef.current);
+    resendTimerRef.current = window.setInterval(() => {
+      setResendCountdown(prev => {
+        if (prev <= 1) {
+          if (resendTimerRef.current) {
+            window.clearInterval(resendTimerRef.current);
+            resendTimerRef.current = null;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (resendTimerRef.current) {
+        window.clearInterval(resendTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleOrderAction = async (orderId: string, action: 'accept' | 'start' | 'complete') => {
     try {
