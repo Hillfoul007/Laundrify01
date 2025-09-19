@@ -1671,7 +1671,7 @@ router.post('/order-action', verifyRiderToken, async (req, res) => {
     }
 
     // Validate action
-    if (!['accept', 'start', 'complete'].includes(action)) {
+    if (!['accept', 'start', 'complete', 'reject'].includes(action)) {
       return res.status(400).json({ message: 'Invalid action' });
     }
 
@@ -1751,6 +1751,13 @@ router.post('/order-action', verifyRiderToken, async (req, res) => {
       case 'complete':
         order.riderStatus = 'completed';
         order.completedAt = new Date();
+        break;
+      case 'reject':
+        // Unassign the rider and mark rejected by rider
+        order.riderStatus = 'rejected_by_rider';
+        order.rejectedBy = req.rider?.riderId || null;
+        order.rejectedAt = new Date();
+        order.assignedRider = null;
         break;
     }
 
