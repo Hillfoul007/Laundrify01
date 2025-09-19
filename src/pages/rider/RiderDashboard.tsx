@@ -264,7 +264,7 @@ export default function RiderDashboard() {
     try {
       const token = localStorage.getItem('riderToken');
       const apiUrl = getRiderApiUrl('/toggle-status');
-      console.log('��� Toggling status:', apiUrl);
+      console.log('🔍 Toggling status:', apiUrl);
 
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -503,50 +503,94 @@ export default function RiderDashboard() {
           }
 
           await fetchAssignedOrders();
-          return;
-        } catch (err) {
-          console.warn('OTP request failed, falling back to standard action', err);
-          toast.dismiss(`order-action-${orderId}`);
-          // Fall through to normal action attempt
-        }
+        return;
+      } catch (err) {
+        console.warn('OTP request failed, falling back to standard action', err);
+        toast.dismiss(`order-action-${orderId}`);
+        // Fall through to normal action attempt
       }
+    }
 
-      // Default behavior (accept or fallback when OTP request failed)
-      toast.loading(`${action.charAt(0).toUpperCase() + action.slice(1)}ing order...`, { id: `order-action-${orderId}` });
-      const response = await fetch(apiUrl, {
+    // Default behavior (accept or fallback when OTP request failed)
+    toast.loading(`${action.charAt(0).toUpperCase() + action.slice(1)}ing order...`, { id: `order-action-${orderId}` });
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        orderId,
+        action,
+        riderId: rider?._id,
+        location: currentLocation,
+        timestamp: new Date().toISOString()
+      })
+    });
+
+    const responseData = await response.json().catch(() => ({}));
+    toast.dismiss(`order-action-${orderId}`);
+
+    if (response.ok) {
+      toast.success(`Order ${action}ed successfully!`);
+      if (action === 'accept') {
+        navigate(`/rider/orders/${orderId}`, { state: { fromAccept: true } });
+      } else if (action === 'start' && currentOrder) {
+        setTimeout(() => openGoogleMapsNavigation(currentOrder), 500);
+      }
+      await fetchAssignedOrders();
+    } else {
+      console.error('Order action failed:', response.status, responseData);
+      toast.error(responseData.message || `Failed to ${action} order. Please try again.`);
+    }
+  } catch (error) {
+    console.error('Order action error:', error);
+    toast.dismiss(`order-action-${orderId}`);
+    toast.error('Network error. Please check your connection and try again.');
+  }
+};
+
+  // Verify customer OTP from inline dashboard modal
+  const verifyCustomerOTPInline = async () => {
+    if (!otpOrderId) return toast.error('No order selected for OTP verification');
+    if (!otpValue) return toast.error('Enter OTP');
+    try {
+      setOtpLoading(true);
+      const token = localStorage.getItem('riderToken');
+      const apiUrl = getRiderApiUrl(`/orders/${otpOrderId}/verify-customer-otp`);
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({
-          orderId,
-          action,
-          riderId: rider?._id,
-          location: currentLocation,
-          timestamp: new Date().toISOString()
-        })
+        body: JSON.stringify({ otp: otpValue, type: otpType })
       });
-
-      const responseData = await response.json().catch(() => ({}));
-      toast.dismiss(`order-action-${orderId}`);
-
-      if (response.ok) {
-        toast.success(`Order ${action}ed successfully!`);
-        if (action === 'accept') {
-          navigate(`/rider/orders/${orderId}`, { state: { fromAccept: true } });
-        } else if (action === 'start' && currentOrder) {
-          setTimeout(() => openGoogleMapsNavigation(currentOrder), 500);
-        }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        toast.success('OTP verified');
+        setOtpModalOpen(false);
+        setOtpValue('');
+        setOtpOrderId(null);
+        // Refresh orders
         await fetchAssignedOrders();
+        // Notify global manager
+        try {
+          if (otpOrderId && (window as any).globalVerificationManager) {
+            (window as any).globalVerificationManager.setVerificationStatus(otpOrderId, 'approved');
+          }
+          window.dispatchEvent(new CustomEvent('globalVerificationStatusChanged', { detail: { orderId: otpOrderId, status: 'approved' } }));
+        } catch (e) {
+          console.warn('Failed to notify global manager after inline OTP verify', e);
+        }
       } else {
-        console.error('Order action failed:', response.status, responseData);
-        toast.error(responseData.message || `Failed to ${action} order. Please try again.`);
+        toast.error(data.message || 'OTP verification failed');
       }
-    } catch (error) {
-      console.error('Order action error:', error);
-      toast.dismiss(`order-action-${orderId}`);
-      toast.error('Network error. Please check your connection and try again.');
+    } catch (err) {
+      console.error('Inline OTP verify error', err);
+      toast.error('OTP verification failed');
+    } finally {
+      setOtpLoading(false);
     }
   };
 
