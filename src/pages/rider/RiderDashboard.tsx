@@ -612,7 +612,18 @@ export default function RiderDashboard() {
       })
     });
 
-    const responseData = await response.json().catch(() => ({}));
+    // Try to parse JSON, otherwise fall back to text for better diagnostics
+    let responseData: any = null;
+    try {
+      responseData = await response.json();
+    } catch (e) {
+      try {
+        responseData = await response.text();
+      } catch (e2) {
+        responseData = null;
+      }
+    }
+
     toast.dismiss(`order-action-${orderId}`);
 
     if (response.ok) {
@@ -625,7 +636,8 @@ export default function RiderDashboard() {
       await fetchAssignedOrders();
     } else {
       console.error('Order action failed:', response.status, responseData);
-      toast.error(responseData.message || `Failed to ${action} order. Please try again.`);
+      const msg = typeof responseData === 'string' ? responseData : (responseData?.message || JSON.stringify(responseData || {}));
+      toast.error(msg || `Failed to ${action} order. Please try again.`);
     }
   } catch (error) {
     console.error('Order action error:', error);
