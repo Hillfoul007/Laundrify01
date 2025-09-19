@@ -595,7 +595,7 @@ router.post('/toggle-status', verifyRiderToken, async (req, res) => {
 
     // For demo mode, just return success
     if (!mongoose.connection.readyState) {
-      console.log('���� Demo mode: Status toggle accepted');
+      console.log('����� Demo mode: Status toggle accepted');
       return res.json({
         message: `Status updated to ${isActive ? 'active' : 'inactive'} (demo mode)`,
         isActive,
@@ -992,6 +992,89 @@ router.get('/earnings/export', verifyRiderToken, async (req, res) => {
   } catch (error) {
     console.error('❌ Earnings export error:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get rider's completed / historical orders (paginated)
+router.get('/orders/history', verifyRiderToken, async (req, res) => {
+  try {
+    const riderId = req.rider.riderId;
+    const page = Math.max(1, parseInt(String(req.query.page || '1'), 10));
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '20'), 10)));
+    const skip = (page - 1) * limit;
+
+    // Demo mode
+    if (!mongoose.connection.readyState) {
+      console.log('🔧 Demo mode: Returning sample completed orders for history');
+      const sampleCompleted = [
+        {
+          _id: 'completed_1',
+          bookingId: 'LAU-100',
+          customerName: 'Completed One',
+          customerPhone: '+91 9000000001',
+          address: 'Demo Address',
+          pickupTime: 'Yesterday',
+          type: 'Regular',
+          riderStatus: 'completed',
+          completedAt: new Date().toISOString(),
+          items: [{ name: 'Shirt', quantity: 2, price: 50 }]
+        }
+      ];
+      return res.json({ total: sampleCompleted.length, page, limit, data: sampleCompleted });
+    }
+
+    // Query completed regular bookings
+    const bookingFilter = {
+      assignedRider: riderId,
+      $or: [ { riderStatus: 'completed' }, { status: 'completed' }, { status: 'delivered' } ]
+    };
+
+    const quickFilter = { rider_id: riderId, status: { $in: ['completed', 'delivered'] } };
+
+    const [bookings, quicks, bookingsCount, quicksCount] = await Promise.all([
+      Booking.find(bookingFilter).populate('customer_id', 'name phone').sort({ completedAt: -1, updated_at: -1 }).skip(skip).limit(limit),
+      QuickPickup.find(quickFilter).populate('customer_id', 'name phone').sort({ completedAt: -1, updatedAt: -1 }).skip(skip).limit(limit),
+      Booking.countDocuments(bookingFilter),
+      QuickPickup.countDocuments(quickFilter)
+    ]);
+
+    const transformedBookings = bookings.map(order => ({
+      _id: order._id,
+      bookingId: order.custom_order_id || order._id,
+      customerName: order.name || order.customer_id?.name,
+      customerPhone: order.phone || order.customer_id?.phone,
+      address: order.address,
+      pickupTime: `${order.scheduled_date || ''} ${order.scheduled_time || ''}`.trim(),
+      type: 'Regular',
+      riderStatus: order.riderStatus || 'completed',
+      completedAt: order.completedAt || order.updated_at,
+      items: order.item_prices || [],
+      finalAmount: order.final_amount || 0
+    }));
+
+    const transformedQuicks = quicks.map(qp => ({
+      _id: qp._id,
+      bookingId: `QP-${qp._id.toString().slice(-6).toUpperCase()}`,
+      customerName: qp.customer_name || qp.customer_id?.name,
+      customerPhone: qp.customer_phone || qp.customer_id?.phone,
+      address: qp.address,
+      pickupTime: `${qp.pickup_date || ''} ${qp.pickup_time || ''}`.trim(),
+      type: 'Quick Pickup',
+      riderStatus: 'completed',
+      completedAt: qp.completedAt || qp.updatedAt || qp.createdAt,
+      items: qp.items_collected || [],
+      finalAmount: qp.actual_cost || qp.estimated_cost || 0
+    }));
+
+    const combined = [...transformedBookings, ...transformedQuicks]
+      .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+
+    const total = bookingsCount + quicksCount;
+
+    res.json({ total, page, limit, data: combined });
+  } catch (error) {
+    console.error('❌ Get rider order history error:', error);
+    res.status(500).json({ message: 'Failed to fetch order history', error: error.message });
   }
 });
 
