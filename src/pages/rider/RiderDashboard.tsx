@@ -432,6 +432,12 @@ export default function RiderDashboard() {
     }, 600);
   };
 
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [otpOrderId, setOtpOrderId] = useState<string | null>(null);
+  const [otpType, setOtpType] = useState<'pickup'|'delivery'>('pickup');
+  const [otpValue, setOtpValue] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+
   const handleOrderAction = async (orderId: string, action: 'accept' | 'start' | 'complete') => {
     try {
       // Validate rider status first
