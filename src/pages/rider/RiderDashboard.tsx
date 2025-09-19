@@ -636,9 +636,23 @@ export default function RiderDashboard() {
       }
       await fetchAssignedOrders();
     } else {
-      console.error('Order action failed:', response.status, responseData);
-      const msg = typeof responseData === 'string' ? responseData : (responseData?.message || JSON.stringify(responseData || {}));
-      toast.error(msg || `Failed to ${action} order. Please try again.`);
+      // Enhanced diagnostics for debugging server 500 with empty body
+      let rawText = '';
+      try {
+        rawText = await response.clone().text();
+      } catch (e) {
+        rawText = '';
+      }
+      console.error('Order action failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Array.from(response.headers.entries()),
+        parsedBody: responseData,
+        rawText
+      });
+
+      const msg = typeof responseData === 'string' ? responseData : (responseData?.message || rawText || `Failed to ${action} order. Please try again.`);
+      toast.error(msg);
     }
   } catch (error) {
     console.error('Order action error:', error);
