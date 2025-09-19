@@ -1658,12 +1658,17 @@ router.post('/orders/:orderId/verify-customer-otp', verifyRiderToken, async (req
 // Handle order actions (accept, start, complete)
 router.post('/order-action', verifyRiderToken, async (req, res) => {
   try {
-    console.log('�� Order action request:', {
+    console.log('🧭 Order action request:', {
       hasRiderId: !!req.rider?.riderId,
       body: req.body
     });
 
-    const { orderId, action, location, riderId } = req.body;
+    const { orderId, action, location, riderId } = req.body || {};
+
+    // Validate required fields
+    if (!orderId || !action) {
+      return res.status(400).json({ message: 'orderId and action are required' });
+    }
 
     // Validate action
     if (!['accept', 'start', 'complete'].includes(action)) {
@@ -1673,10 +1678,9 @@ router.post('/order-action', verifyRiderToken, async (req, res) => {
     // If requireOtp requested, generate OTP and send to customer, respond with need_verification
     const { requireOtp } = req.body || {};
 
-    // For demo mode, handle requireOtp as well
+    // Demo mode: when DB not connected, provide deterministic demo responses
     if (!mongoose.connection.readyState) {
       if (requireOtp) {
-        // demo mode: log and return need_verification
         console.log('🔧 Demo mode: OTP requested for order action');
         return res.json({ need_verification: true, message: 'OTP requested (demo mode)' });
       }
@@ -1693,25 +1697,37 @@ router.post('/order-action', verifyRiderToken, async (req, res) => {
       });
     }
 
-    const order = await Booking.findOne({
-      _id: orderId,
-      assignedRider: req.rider.riderId
-    });
+    // Safely fetch order
+    let order;
+    try {
+      order = await Booking.findOne({
+        _id: orderId,
+        assignedRider: req.rider?.riderId
+      });
+    } catch (dbErr) {
+      console.error('❌ DB query error while fetching order:', dbErr);
+      return res.status(500).json({ message: 'Database query failed', error: dbErr.message });
+    }
 
     // If OTP verification is required before performing the action
     if (requireOtp) {
-      const phone = order ? (order.phone || order.customerPhone || (order.customer_id && order.customer_id.phone)) : null;
-      if (!phone) {
-        return res.status(404).json({ success: false, message: 'Customer phone not found for OTP' });
+      try {
+        const phone = order ? (order.phone || order.customerPhone || (order.customer_id && order.customer_id.phone)) : null;
+        if (!phone) {
+          return res.status(404).json({ success: false, message: 'Customer phone not found for OTP' });
+        }
+        const otp = otpService.generateOTP();
+        otpService.storeOTP(phone, otp, action === 'start' ? 'pickup' : 'delivery');
+        await otpService.sendOTP(phone, otp, action === 'start' ? 'pickup' : 'delivery');
+        return res.json({ need_verification: true, message: 'OTP sent to customer' });
+      } catch (otpErr) {
+        console.error('❌ OTP send error:', otpErr);
+        return res.status(500).json({ message: 'Failed to send OTP', error: otpErr.message });
       }
-      const otp = otpService.generateOTP();
-      otpService.storeOTP(phone, otp, action === 'start' ? 'pickup' : 'delivery');
-      await otpService.sendOTP(phone, otp, action === 'start' ? 'pickup' : 'delivery');
-      return res.json({ need_verification: true, message: 'OTP sent to customer' });
     }
 
     if (!order) {
-      console.log('❌ Order not found, using demo response');
+      console.log('❌ Order not found, using demo fallback');
       return res.json({
         message: `Order ${action}ed successfully (demo fallback)`,
         order: {
@@ -1722,6 +1738,7 @@ router.post('/order-action', verifyRiderToken, async (req, res) => {
       });
     }
 
+    // Apply status change
     switch (action) {
       case 'accept':
         order.riderStatus = 'accepted';
@@ -1737,38 +1754,39 @@ router.post('/order-action', verifyRiderToken, async (req, res) => {
         break;
     }
 
-    await order.save();
-
-    // Notify customer via SMS and create notification
     try {
-      const customerPhone = order.phone || (order.customer_id && order.customer_id.phone) || order.customerPhone;
-      const riderInfo = { id: req.rider.riderId };
-      const msg = `Your order ${order.custom_order_id || order._id} is now ${order.riderStatus}.`;
-      if (customerPhone) {
-        await otpService.sendSMS(customerPhone, msg, 'order_status');
-      }
-      try { await notificationService.createOrderUpdateNotification(order.customer_id || null, order, riderInfo, { action }); } catch (err) { console.warn('Failed to create notification record', err); }
-    } catch (notifyErr) {
-      console.warn('Failed to notify customer about order action', notifyErr);
+      await order.save();
+    } catch (saveErr) {
+      console.error('❌ Error saving order status change:', saveErr);
+      return res.status(500).json({ message: 'Failed to save order status', error: saveErr.message });
     }
 
-    res.json({
+    // Notify customer via SMS and create notification (non-blocking)
+    (async () => {
+      try {
+        const customerPhone = order.phone || (order.customer_id && order.customer_id.phone) || order.customerPhone;
+        const riderInfo = { id: req.rider?.riderId };
+        const msg = `Your order ${order.custom_order_id || order._id} is now ${order.riderStatus}.`;
+        if (customerPhone) {
+          try { await otpService.sendSMS(customerPhone, msg, 'order_status'); } catch (smsErr) { console.warn('Failed to send order status SMS', smsErr); }
+        }
+        try { await notificationService.createOrderUpdateNotification(order.customer_id || null, order, riderInfo, { action }); } catch (notifErr) { console.warn('Failed to create notification record', notifErr); }
+      } catch (notifyErr) {
+        console.warn('Failed to notify customer about order action', notifyErr);
+      }
+    })();
+
+    return res.json({
       message: `Order ${action}ed successfully`,
       order,
       mode: 'database'
     });
   } catch (error) {
-    console.error('❌ Order action error:', error);
-    // Fallback to demo response on error
-    const { orderId, action } = req.body;
-    res.json({
-      message: `Order ${action}ed successfully (error fallback)`,
-      order: {
-        _id: orderId,
-        riderStatus: action === 'accept' ? 'accepted' : action === 'start' ? 'picked_up' : 'completed'
-      },
-      mode: 'error_fallback'
-    });
+    console.error('❌ Order action error (unhandled):', error);
+    // Return detailed error in development, generic message in production
+    const payload = { message: 'Order action failed', error: error.message };
+    if (process.env.NODE_ENV !== 'production') payload.stack = error.stack;
+    return res.status(500).json(payload);
   }
 });
 
