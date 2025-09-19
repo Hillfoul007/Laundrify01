@@ -661,6 +661,9 @@ export default function RiderDashboard() {
               <h2 className="text-lg font-semibold">Assigned Orders</h2>
               <div className="text-sm text-muted-foreground">Tap an order to view details, edit items or start navigation</div>
             </div>
+            <div className="ml-4">
+              <Button size="sm" variant="ghost" onClick={() => navigate('/rider/history')}>Order History</Button>
+            </div>
             <div className="flex items-center gap-2">
               <div className="text-sm">Beep: {beeping ? 'On' : 'Off'}</div>
               <Button size="sm" variant="ghost" onClick={() => (beeping ? stopBeepLoop() : startBeepLoop())}>{beeping ? 'Stop Alert' : 'Start Alert'}</Button>
