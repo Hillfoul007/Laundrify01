@@ -39,6 +39,9 @@ export default function RiderOrders() {
   const navigate = useNavigate();
   const [order, setOrder] = useState<any>(null);
 
+  const location = useLocation();
+  const [isEditing, setIsEditing] = useState(false);
+
   // If navigated from Accept action, Dialogflow or RiderDashboard passes state { fromAccept: true }
   useEffect(() => {
     try {
@@ -50,8 +53,6 @@ export default function RiderOrders() {
       // ignore
     }
   }, [location]);
-  const [isEditing, setIsEditing] = useState(false);
-  const location = useLocation();
   const [editedItems, setEditedItems] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedService, setSelectedService] = useState<LaundryService | null>(null);
