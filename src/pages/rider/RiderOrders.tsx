@@ -1386,6 +1386,20 @@ export default function RiderOrders() {
           }>
             {typeof order.riderStatus === 'string' ? order.riderStatus : 'Unknown'}
           </Badge>
+
+          <div className="ml-auto flex items-center space-x-2">
+            <Button size="sm" variant="ghost" onClick={() => {
+              try {
+                const phone = order.customerPhone || order.phone || (order.customer_id && order.customer_id.phone) || '';
+                const itemsList = (editedItems && editedItems.length > 0 ? editedItems : (order.items || [])).map((it: any) => `- ${it.name} x${it.quantity} (₹${it.price || it.unit_price || 0})`).join('%0A');
+                const msg = `Hello ${order.customerName || ''},%0AYour items:%0A${itemsList}%0AOrder ID: ${order.bookingId || order._id}`;
+                const wa = phone ? `https://wa.me/${phone.replace(/\D/g,'')}?text=${msg}` : `https://wa.me/?text=${msg}`;
+                window.open(wa, '_blank');
+              } catch (e) {
+                console.warn('Failed to open WhatsApp', e);
+              }
+            }}>Share Confirmation</Button>
+          </div>
         </div>
 
         {/* Customer Information */}
@@ -1665,7 +1679,7 @@ export default function RiderOrders() {
                         </Badge>
                       )}
                     </div>
-                    <p className="text-sm text-gray-600">₹{item.price} each</p>
+                    <p className="text-sm text-gray-600">��{item.price} each</p>
                     {item.description && (
                       <p className="text-xs text-gray-500 mt-1">{item.description}</p>
                     )}
