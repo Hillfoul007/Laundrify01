@@ -661,6 +661,33 @@ export default function RiderDashboard() {
           <TrainingVideo videoUrl={undefined} />
         </aside>
       </div>
+
+      {/* Inline OTP verification dialog */}
+      <Dialog open={otpModalOpen} onOpenChange={(open) => setOtpModalOpen(open)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Enter Customer OTP</DialogTitle>
+            <DialogDescription>Please enter the OTP sent to the customer to proceed.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 mt-2">
+            <div>
+              <Label className="text-sm">OTP</Label>
+              <Input value={otpValue} onChange={(e) => setOtpValue((e.target as HTMLInputElement).value)} placeholder="Enter OTP" />
+            </div>
+
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => { setOtpModalOpen(false); setOtpValue(''); setOtpOrderId(null); }}>
+                Cancel
+              </Button>
+              <Button onClick={verifyCustomerOTPInline} disabled={otpLoading}>
+                {otpLoading ? 'Verifying...' : 'Verify OTP'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </RiderLayout>
   );
 }
