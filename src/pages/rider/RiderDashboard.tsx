@@ -416,15 +416,67 @@ export default function RiderDashboard() {
       return;
     }
 
-    // Build waypoints list (up to 8 intermediate waypoints)
+    // Convert address to lat/lng fallback to coordinates if available (we'll use address strings for maps)
+    const origin = { lat: currentLocation.lat, lng: currentLocation.lng };
+
+    // Simple greedy nearest-neighbour algorithm using haversine distance between coordinates if available
+    const parseCoords = (o: any) => {
+      if (o.coordinates && typeof o.coordinates.lat === 'number' && typeof o.coordinates.lng === 'number') return { lat: o.coordinates.lat, lng: o.coordinates.lng, address: o.address };
+      // Try to parse from address if it's lat,lng
+      const m = typeof o.address === 'string' ? o.address.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/) : null;
+      if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]), address: o.address };
+      return null;
+    };
+
+    const points = validOrders.map(o => ({ order: o, coords: parseCoords(o) }));
+
+    const haversine = (a: {lat:number,lng:number}, b: {lat:number,lng:number}) => {
+      const toRad = (v:number) => v * Math.PI / 180;
+      const R = 6371; // km
+      const dLat = toRad(b.lat - a.lat);
+      const dLon = toRad(b.lng - a.lng);
+      const lat1 = toRad(a.lat);
+      const lat2 = toRad(b.lat);
+      const sinDlat = Math.sin(dLat/2);
+      const sinDlon = Math.sin(dLon/2);
+      const aHarv = sinDlat*sinDlat + sinDlon*sinDlon * Math.cos(lat1) * Math.cos(lat2);
+      const c = 2 * Math.atan2(Math.sqrt(aHarv), Math.sqrt(1-aHarv));
+      return R * c;
+    };
+
+    // Use nearest neighbour starting from origin for points that have coords; others appended at end
+    const withCoords = points.filter(p => p.coords !== null);
+    const withoutCoords = points.filter(p => p.coords === null);
+
+    const route: any[] = [];
+    let current = origin;
+    const remaining = [...withCoords];
+    while (remaining.length > 0) {
+      let bestIndex = 0;
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < remaining.length; i++) {
+        const c = remaining[i].coords as any;
+        const dist = haversine(current as any, c);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIndex = i;
+        }
+      }
+      const picked = remaining.splice(bestIndex, 1)[0];
+      route.push(picked.order);
+      current = picked.coords as any;
+    }
+
+    // Append orders without coords at the end (best-effort)
+    withoutCoords.forEach(p => route.push(p.order));
+
+    // Build maps URL (up to 10 waypoints including origin/destination limit)
     const waypointLimit = 8;
-    const waypoints = validOrders.slice(0, waypointLimit + 1).map(o => encodeURIComponent(o.address || `${o.coordinates.lat},${o.coordinates.lng}`));
-
-    const origin = `${currentLocation.lat},${currentLocation.lng}`;
-    const destination = waypoints[waypoints.length - 1];
-    const intermediate = waypoints.slice(0, waypoints.length - 1).join('|');
-
-    const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving${intermediate ? `&waypoints=${intermediate}` : ''}`;
+    const encodedWaypoints = route.slice(0, waypointLimit + 1).map(o => encodeURIComponent(o.address || `${o.coordinates?.lat},${o.coordinates?.lng}`));
+    const originStr = `${origin.lat},${origin.lng}`;
+    const destination = encodedWaypoints[encodedWaypoints.length - 1];
+    const intermediate = encodedWaypoints.slice(0, encodedWaypoints.length - 1).join('|');
+    const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${originStr}&destination=${destination}&travelmode=driving${intermediate ? `&waypoints=${intermediate}` : ''}`;
 
     toast.loading('Opening optimized route...', { id: 'optimize' });
     window.open(mapsUrl, '_blank');
