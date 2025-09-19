@@ -615,7 +615,8 @@ export default function RiderDashboard() {
     // Try to parse JSON, otherwise fall back to text for better diagnostics
     let responseData: any = null;
     try {
-      responseData = await response.json();
+      // Use clone to avoid consuming the response body twice
+      responseData = await response.clone().json();
     } catch (e) {
       try {
         responseData = await response.text();
