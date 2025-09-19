@@ -1345,6 +1345,16 @@ export default function RiderOrders() {
         setCustomerOtp('');
         // Refresh order details
         fetchOrderDetails(orderId!);
+
+        // Inform global manager and other parts of the app that verification completed so dashboards refresh
+        try {
+          if (orderId && globalVerificationManager) {
+            globalVerificationManager.setVerificationStatus(orderId, 'approved');
+          }
+          window.dispatchEvent(new CustomEvent('globalVerificationStatusChanged', { detail: { orderId, status: 'approved' } }));
+        } catch (e) {
+          console.warn('Failed to notify global verification manager after OTP verify', e);
+        }
       } else {
         toast.error(data.message || 'OTP verification failed');
       }
