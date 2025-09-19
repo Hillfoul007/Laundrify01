@@ -324,11 +324,42 @@ export default function RiderDashboard() {
 
       if (response.ok) {
         const orders = await response.json();
-        setAssignedOrders(Array.isArray(orders) ? orders : []);
+        const list = Array.isArray(orders) ? orders : [];
+        // Sort newest first by assignedAt or created_at
+        const sorted = list.slice().sort((a: any, b: any) => {
+          const aTime = new Date(a.assignedAt || a.created_at || a.createdAt || 0).getTime();
+          const bTime = new Date(b.assignedAt || b.created_at || b.createdAt || 0).getTime();
+          return bTime - aTime;
+        });
+
+        setAllAssignedOrders(sorted);
+        setAssignedOrders(sorted);
         setLastFetchError(null); // Clear any previous errors
 
+        // Compute upcoming orders within next 2 hours
+        const now = Date.now();
+        const twoHours = 2 * 60 * 60 * 1000;
+        const upcoming = sorted.filter((o: any) => {
+          // Try scheduled pickup time first (ISO), else fallback to assignedAt
+          const timeStr = o.pickupTimeISO || o.scheduledAt || o.pickup_time || o.pickupTime || o.assignedAt;
+          let t = null;
+          if (typeof timeStr === 'string') {
+            const parsed = Date.parse(timeStr);
+            if (!isNaN(parsed)) t = parsed;
+          }
+          // If not parsable, check relative assignedAt
+          if (!t && o.assignedAt) {
+            const parsed = Date.parse(o.assignedAt);
+            if (!isNaN(parsed)) t = parsed;
+          }
+          if (!t) return false;
+          return t >= now && t <= (now + twoHours);
+        });
+
+        setUpcomingOrders(upcoming);
+
         // If there are new assigned orders that are not yet accepted, start the beep reminder
-        const shouldBeep = (Array.isArray(orders) ? orders : []).some((o: any) => o.riderStatus === 'assigned');
+        const shouldBeep = list.some((o: any) => o.riderStatus === 'assigned');
         if (shouldBeep) startBeepLoop();
       } else {
         console.warn('Failed to fetch assigned orders:', response.status, response.statusText);
