@@ -489,8 +489,11 @@ export default function RiderDashboard() {
 
           if (r.ok && d.need_verification) {
             toast.success('OTP sent to customer. Please verify to continue.');
-            // Open the order detail so rider can enter/verify OTP
-            navigate(`/rider/orders/${orderId}`, { state: { fromAccept: action === 'start' } });
+            // Open inline OTP modal so rider can enter the OTP without leaving dashboard
+            setOtpOrderId(orderId);
+            setOtpType(action === 'start' ? 'pickup' : 'delivery');
+            setOtpValue('');
+            setOtpModalOpen(true);
           } else if (r.ok) {
             // Backend chose to perform the action immediately (no OTP needed)
             if (action === 'start' && currentOrder) {
