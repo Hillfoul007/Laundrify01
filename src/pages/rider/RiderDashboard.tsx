@@ -46,7 +46,7 @@ export default function RiderDashboard() {
       setRider(riderInfo);
       setIsActive(riderInfo.isActive || false);
     }
-    
+
     // Load assigned orders
     fetchAssignedOrders();
 
@@ -72,6 +72,29 @@ export default function RiderDashboard() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
+  }, []);
+
+  // Listen for global verification status changes and refresh assigned orders
+  useEffect(() => {
+    const handler = (e: Event) => {
+      try {
+        const detail = (e as CustomEvent).detail || {};
+        const { orderId, status } = detail;
+        if (!orderId) return;
+        if (status === 'approved') {
+          fetchAssignedOrders();
+          toast.success('Verification approved — refreshed orders');
+        } else if (status === 'rejected') {
+          fetchAssignedOrders();
+          toast.error('Verification rejected — order may need attention');
+        }
+      } catch (err) {
+        console.warn('Error handling global verification event', err);
+      }
+    };
+
+    window.addEventListener('globalVerificationStatusChanged', handler as EventListener);
+    return () => window.removeEventListener('globalVerificationStatusChanged', handler as EventListener);
   }, []);
 
   useEffect(() => {
