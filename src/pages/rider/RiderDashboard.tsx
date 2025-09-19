@@ -32,6 +32,8 @@ export default function RiderDashboard() {
   const [isActive, setIsActive] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{lat: number, lng: number} | null>(null);
   const [assignedOrders, setAssignedOrders] = useState<any[]>([]);
+  const [upcomingOrders, setUpcomingOrders] = useState<any[]>([]);
+  const [allAssignedOrders, setAllAssignedOrders] = useState<any[]>([]);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [locationWatcher, setLocationWatcher] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
