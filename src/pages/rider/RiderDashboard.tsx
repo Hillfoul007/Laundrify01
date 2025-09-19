@@ -706,6 +706,34 @@ export default function RiderDashboard() {
               <Input value={otpValue} onChange={(e) => setOtpValue((e.target as HTMLInputElement).value)} placeholder="Enter OTP" />
             </div>
 
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                Sent to: {otpOrderId ? (assignedOrders.find(o => o._id === otpOrderId)?.customerPhone || 'Customer') : 'Customer'}
+              </div>
+              <div>
+                <Button size="sm" variant="ghost" onClick={async () => {
+                  if (!otpOrderId) return;
+                  try {
+                    const token = localStorage.getItem('riderToken');
+                    const url = getRiderApiUrl(`/orders/${otpOrderId}/request-customer-otp`);
+                    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ type: otpType }) });
+                    const d = await res.json().catch(() => ({}));
+                    if (res.ok) {
+                      toast.success('OTP resent to customer');
+                      startResendCountdown(30);
+                    } else {
+                      toast.error(d.message || 'Failed to resend OTP');
+                    }
+                  } catch (err) {
+                    console.error('Resend OTP error', err);
+                    toast.error('Failed to resend OTP');
+                  }
+                }} disabled={resendCountdown > 0}>
+                  {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : 'Resend OTP'}
+                </Button>
+              </div>
+            </div>
+
             <div className="flex justify-end space-x-2">
               <Button variant="outline" onClick={() => { setOtpModalOpen(false); setOtpValue(''); setOtpOrderId(null); }}>
                 Cancel
