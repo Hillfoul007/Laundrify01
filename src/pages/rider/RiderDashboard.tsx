@@ -785,22 +785,47 @@ export default function RiderDashboard() {
             </div>
           </div>
 
-          {assignedOrders.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No assigned orders right now.</div>
-          ) : (
-            assignedOrders.map((o) => (
-              <OrderCard
-                key={o._id}
-                order={o}
-                onAccept={(id) => handleOrderAction(id, 'accept')}
-                onReject={(id) => handleReject(id)}
-                onStart={(id) => handleOrderAction(id, 'start')}
-                onComplete={(id) => handleOrderAction(id, 'complete')}
-                onNavigate={(order) => openGoogleMapsNavigation(order)}
-                onEditCart={(order) => handleEditCart(order)}
-              />
-            ))
-          )}
+          {/* Upcoming orders within next 2 hours */}
+          <div className="mb-3">
+            <h3 className="text-md font-medium">Upcoming (next 2 hours)</h3>
+            {upcomingOrders.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No upcoming orders in the next 2 hours.</div>
+            ) : (
+              upcomingOrders.map((o) => (
+                <OrderCard
+                  key={`up_${o._id}`}
+                  order={o}
+                  onAccept={(id) => handleOrderAction(id, 'accept')}
+                  onReject={(id) => handleReject(id)}
+                  onStart={(id) => handleOrderAction(id, 'start')}
+                  onComplete={(id) => handleOrderAction(id, 'complete')}
+                  onNavigate={(order) => openGoogleMapsNavigation(order)}
+                  onEditCart={(order) => handleEditCart(order)}
+                />
+              ))
+            )}
+          </div>
+
+          {/* All assigned orders (newest first) */}
+          <div>
+            <h3 className="text-md font-medium">All Assigned Orders</h3>
+            {allAssignedOrders.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No assigned orders right now.</div>
+            ) : (
+              allAssignedOrders.map((o) => (
+                <OrderCard
+                  key={`all_${o._id}`}
+                  order={o}
+                  onAccept={(id) => handleOrderAction(id, 'accept')}
+                  onReject={(id) => handleReject(id)}
+                  onStart={(id) => handleOrderAction(id, 'start')}
+                  onComplete={(id) => handleOrderAction(id, 'complete')}
+                  onNavigate={(order) => openGoogleMapsNavigation(order)}
+                  onEditCart={(order) => handleEditCart(order)}
+                />
+              ))
+            )}
+          </div>
         </div>
 
         <aside className="lg:col-span-1">
