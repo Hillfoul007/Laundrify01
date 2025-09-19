@@ -521,6 +521,8 @@ export default function RiderDashboard() {
             setOtpType(action === 'start' ? 'pickup' : 'delivery');
             setOtpValue('');
             setOtpModalOpen(true);
+            // Start resend countdown to prevent spam
+            try { startResendCountdown(30); } catch (e) { console.warn('Failed to start resend countdown', e); }
           } else if (r.ok) {
             // Backend chose to perform the action immediately (no OTP needed)
             if (action === 'start' && currentOrder) {
