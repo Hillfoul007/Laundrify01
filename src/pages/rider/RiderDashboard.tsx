@@ -23,6 +23,8 @@ import { getRiderApiUrl } from '@/lib/riderApi';
 import OrderCard from '@/components/rider/OrderCard';
 import EarningsDashboard from '@/components/rider/EarningsDashboard';
 import TrainingVideo from '@/components/rider/TrainingVideo';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 
 export default function RiderDashboard() {
   const navigate = useNavigate();
@@ -262,7 +264,7 @@ export default function RiderDashboard() {
     try {
       const token = localStorage.getItem('riderToken');
       const apiUrl = getRiderApiUrl('/toggle-status');
-      console.log('🔍 Toggling status:', apiUrl);
+      console.log('��� Toggling status:', apiUrl);
 
       const response = await fetch(apiUrl, {
         method: 'POST',
