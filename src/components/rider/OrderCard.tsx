@@ -14,6 +14,8 @@ type Order = {
   riderStatus?: string;
 };
 
+import { toast } from 'sonner';
+
 export default function OrderCard({
   order,
   onAccept,
@@ -32,6 +34,15 @@ export default function OrderCard({
   onEditCart: (order: Order) => void;
 }) {
   const statusLabel = order.riderStatus || 'unassigned';
+
+  const safeCall = async (fn: Function, ...args: any[]) => {
+    try {
+      await Promise.resolve(fn(...args));
+    } catch (err) {
+      console.error('OrderCard action error:', err);
+      toast.error('Action failed. Please try again.');
+    }
+  };
 
   return (
     <Card className="mb-3">
@@ -62,10 +73,10 @@ export default function OrderCard({
         </div>
 
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => onNavigate(order)} className="flex-1">
+          <Button size="sm" onClick={() => safeCall(onNavigate, order)} className="flex-1">
             <Navigation className="mr-2 h-4 w-4" /> Navigate
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => onEditCart(order)}>
+          <Button size="sm" variant="ghost" onClick={() => safeCall(onEditCart, order)}>
             Edit Cart
           </Button>
         </div>
@@ -73,23 +84,23 @@ export default function OrderCard({
         <div className="flex items-center gap-2 justify-end">
           {statusLabel === 'assigned' && (
             <>
-              <Button size="sm" onClick={() => onAccept(order._id)}>
+              <Button size="sm" onClick={() => safeCall(onAccept, order._id)}>
                 <CheckCircle className="mr-2 h-4 w-4" /> Accept
               </Button>
-              <Button size="sm" variant="destructive" onClick={() => onReject(order._id)}>
+              <Button size="sm" variant="destructive" onClick={() => safeCall(onReject, order._id)}>
                 <XCircle className="mr-2 h-4 w-4" /> Reject
               </Button>
             </>
           )}
 
           {statusLabel === 'accepted' && (
-            <Button size="sm" onClick={() => onStart(order._id)}>
+            <Button size="sm" onClick={() => safeCall(onStart, order._id)}>
               Start
             </Button>
           )}
 
           {(statusLabel === 'on_the_way' || statusLabel === 'picked_up') && (
-            <Button size="sm" onClick={() => onComplete(order._id)}>
+            <Button size="sm" onClick={() => safeCall(onComplete, order._id)}>
               Delivered
             </Button>
           )}
