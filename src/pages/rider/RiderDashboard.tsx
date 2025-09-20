@@ -743,7 +743,12 @@ export default function RiderDashboard() {
   };
 
   const handleEditCart = (order: any) => {
-    navigate(`/rider/orders/${order._id}`, { state: { editCart: true } });
+    try {
+      navigate(`/rider/orders/${order._id}`, { state: { editCart: true } });
+    } catch (err) {
+      console.error('Navigation error (edit cart):', err);
+      toast.error('Unable to open order editor. Please try again.');
+    }
   };
 
   const fetchEarningsSummary = async () => {
