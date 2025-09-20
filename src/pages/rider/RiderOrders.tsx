@@ -24,7 +24,8 @@ import {
   Save,
   X,
   AlertTriangle,
-  Bell
+  Bell,
+  Lock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import RiderLayout from '@/components/rider/RiderLayout';
