@@ -10,6 +10,7 @@ import RiderAuth from "@/pages/rider/RiderAuth";
 import RiderDashboard from "@/pages/rider/RiderDashboard";
 import RiderOrders from "@/pages/rider/RiderOrders";
 import RiderNotificationsPage from "@/pages/rider/RiderNotificationsPage";
+import RiderHistory from "@/pages/rider/RiderHistory";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import InstallPrompt from "@/components/InstallPrompt";
 import PWAUpdateNotification from "@/components/PWAUpdateNotification";
@@ -92,6 +93,7 @@ function App() {
               <Route path="/rider/orders" element={<RiderDashboard />} />
               <Route path="/rider/orders/:orderId" element={<RiderOrders />} />
               <Route path="/rider/notifications" element={<RiderNotificationsPage />} />
+              <Route path="/rider/history" element={<RiderHistory />} />
               <Route path="/rider/profile" element={<RiderDashboard />} />
               <Route path="*" element={<LaundryIndex />} />
             </Routes>

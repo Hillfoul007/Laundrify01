@@ -1,9 +1,8 @@
+@import './styles/rider-mobile.css';
 @tailwind base;
+
 @tailwind components;
 @tailwind utilities;
-
-/* Import mobile styles */
-@import './styles/rider-mobile.css';
 
 @layer base {
   :root {

@@ -7,6 +7,29 @@ import { initializeErrorHandlers } from "./utils/errorHandlers";
 import "./utils/runClearTestVerifications";
 import "./utils/globalVerificationManager";
 
+// Initialize Sentry if DSN provided
+const SENTRY_DSN = (import.meta as any).env?.VITE_SENTRY_DSN;
+if (SENTRY_DSN) {
+  try {
+    // Lazy import to avoid build errors when Sentry not installed/configured
+    try {
+      const modulePath = '@sentry' + '/react';
+      // Use @vite-ignore to avoid static analysis when Sentry isn't installed
+      // @ts-ignore
+      const Sentry = await import(/* @vite-ignore */ modulePath);
+      Sentry.init({
+        dsn: SENTRY_DSN,
+        tracesSampleRate: 0.1,
+      });
+      console.log('✅ Sentry initialized');
+    } catch (e) {
+      console.warn('⚠️ Sentry import failed or not installed', e);
+    }
+  } catch (e) {
+    console.warn('⚠️ Sentry not initialized (missing package or config)', e);
+  }
+}
+
 // Initialize performance monitoring
 const perfMonitor = PerformanceMonitor.getInstance();
 perfMonitor.init();

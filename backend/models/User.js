@@ -21,20 +21,20 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: false,
       trim: true,
-      minlength: [2, "Name must be at least 2 characters"],
+      minlength: [1, "Name must be at least 1 character"],
     },
     name: {
       type: String,
       required: false,
       trim: true,
-      minlength: [2, "Name must be at least 2 characters"],
+      minlength: [1, "Name must be at least 1 character"],
     },
     phone: {
       type: String,
       required: [true, "Phone number is required"],
       unique: true,
       trim: true,
-      match: [/^[6-9]\d{9}$/, "Please enter a valid 10-digit phone number"],
+      match: [/^\d{10,12}$/, "Please enter a valid phone number (10-12 digits)"],
     },
     user_type: {
       type: String,

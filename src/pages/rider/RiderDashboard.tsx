@@ -20,6 +20,11 @@ import { toast } from 'sonner';
 import RiderLayout from '@/components/rider/RiderLayout';
 import RiderNotifications from '@/components/rider/RiderNotifications';
 import { getRiderApiUrl } from '@/lib/riderApi';
+import OrderCard from '@/components/rider/OrderCard';
+import EarningsDashboard from '@/components/rider/EarningsDashboard';
+import TrainingVideo from '@/components/rider/TrainingVideo';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 
 export default function RiderDashboard() {
   const navigate = useNavigate();
@@ -27,9 +32,15 @@ export default function RiderDashboard() {
   const [isActive, setIsActive] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{lat: number, lng: number} | null>(null);
   const [assignedOrders, setAssignedOrders] = useState<any[]>([]);
+  const [upcomingOrders, setUpcomingOrders] = useState<any[]>([]);
+  const [allAssignedOrders, setAllAssignedOrders] = useState<any[]>([]);
+  const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [locationWatcher, setLocationWatcher] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [lastFetchError, setLastFetchError] = useState<string | null>(null);
+  const [beeping, setBeeping] = useState(false);
+  const audioRef = React.useRef<{ stop: () => void } | null>(null);
+  const [earnings, setEarnings] = useState<{ daily: number; weekly: number }>({ daily: 0, weekly: 0 });
 
   useEffect(() => {
     // Load rider data
@@ -39,9 +50,12 @@ export default function RiderDashboard() {
       setRider(riderInfo);
       setIsActive(riderInfo.isActive || false);
     }
-    
+
     // Load assigned orders
     fetchAssignedOrders();
+
+    // Load earnings summary (demo or real if API available)
+    fetchEarningsSummary();
 
     // Network status listeners
     const handleOnline = () => {
@@ -62,6 +76,29 @@ export default function RiderDashboard() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
+  }, []);
+
+  // Listen for global verification status changes and refresh assigned orders
+  useEffect(() => {
+    const handler = (e: Event) => {
+      try {
+        const detail = (e as CustomEvent).detail || {};
+        const { orderId, status } = detail;
+        if (!orderId) return;
+        if (status === 'approved') {
+          fetchAssignedOrders();
+          toast.success('Verification approved — refreshed orders');
+        } else if (status === 'rejected') {
+          fetchAssignedOrders();
+          toast.error('Verification rejected — order may need attention');
+        }
+      } catch (err) {
+        console.warn('Error handling global verification event', err);
+      }
+    };
+
+    window.addEventListener('globalVerificationStatusChanged', handler as EventListener);
+    return () => window.removeEventListener('globalVerificationStatusChanged', handler as EventListener);
   }, []);
 
   useEffect(() => {
@@ -109,6 +146,52 @@ export default function RiderDashboard() {
     if (locationWatcher) {
       navigator.geolocation.clearWatch(locationWatcher);
       setLocationWatcher(null);
+    }
+  };
+
+  // Play a synthetic beep loop using WebAudio until stopped (no asset required)
+  const startBeepLoop = () => {
+    if (audioRef.current) return;
+    try {
+      const AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioContext();
+      const master = ctx.createGain();
+      master.gain.value = 0.05; // low volume
+      master.connect(ctx.destination);
+
+      const play = () => {
+        const osc = ctx.createOscillator();
+        const env = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 880;
+        osc.connect(env);
+        env.connect(master);
+        env.gain.value = 0;
+        const now = ctx.currentTime;
+        env.gain.linearRampToValueAtTime(0.05, now + 0.01);
+        env.gain.linearRampToValueAtTime(0.0, now + 0.35);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      };
+
+      const interval = window.setInterval(play, 600);
+      audioRef.current = {
+        stop: () => {
+          clearInterval(interval);
+          try { ctx.close(); } catch (e) {}
+          audioRef.current = null;
+        }
+      };
+      setBeeping(true);
+    } catch (e) {
+      console.warn('Beep unavailable', e);
+    }
+  };
+
+  const stopBeepLoop = () => {
+    if (audioRef.current) {
+      audioRef.current.stop();
+      setBeeping(false);
     }
   };
 
@@ -241,8 +324,43 @@ export default function RiderDashboard() {
 
       if (response.ok) {
         const orders = await response.json();
-        setAssignedOrders(Array.isArray(orders) ? orders : []);
+        const list = Array.isArray(orders) ? orders : [];
+        // Sort newest first by assignedAt or created_at
+        const sorted = list.slice().sort((a: any, b: any) => {
+          const aTime = new Date(a.assignedAt || a.created_at || a.createdAt || 0).getTime();
+          const bTime = new Date(b.assignedAt || b.created_at || b.createdAt || 0).getTime();
+          return bTime - aTime;
+        });
+
+        setAllAssignedOrders(sorted);
+        setAssignedOrders(sorted);
         setLastFetchError(null); // Clear any previous errors
+
+        // Compute upcoming orders within next 2 hours
+        const now = Date.now();
+        const twoHours = 2 * 60 * 60 * 1000;
+        const upcoming = sorted.filter((o: any) => {
+          // Try scheduled pickup time first (ISO), else fallback to assignedAt
+          const timeStr = o.pickupTimeISO || o.scheduledAt || o.pickup_time || o.pickupTime || o.assignedAt;
+          let t = null;
+          if (typeof timeStr === 'string') {
+            const parsed = Date.parse(timeStr);
+            if (!isNaN(parsed)) t = parsed;
+          }
+          // If not parsable, check relative assignedAt
+          if (!t && o.assignedAt) {
+            const parsed = Date.parse(o.assignedAt);
+            if (!isNaN(parsed)) t = parsed;
+          }
+          if (!t) return false;
+          return t >= now && t <= (now + twoHours);
+        });
+
+        setUpcomingOrders(upcoming);
+
+        // If there are new assigned orders that are not yet accepted, start the beep reminder
+        const shouldBeep = list.some((o: any) => o.riderStatus === 'assigned');
+        if (shouldBeep) startBeepLoop();
       } else {
         console.warn('Failed to fetch assigned orders:', response.status, response.statusText);
         setLastFetchError(`Server error: ${response.status}`);
@@ -286,6 +404,9 @@ export default function RiderDashboard() {
       }
     ];
     setAssignedOrders(demoOrders);
+
+    // Demo beep for demo orders
+    startBeepLoop();
   };
 
   const openGoogleMapsNavigation = (order: any) => {
@@ -316,7 +437,122 @@ export default function RiderDashboard() {
     }, 500);
   };
 
-  const handleOrderAction = async (orderId: string, action: 'accept' | 'start' | 'complete') => {
+  const openOptimizedRoute = (orders: any[]) => {
+    if (!currentLocation) {
+      toast.error('Current location not available. Please enable location services.');
+      return;
+    }
+
+    const validOrders = (orders || []).filter(o => o && (o.address || (o.coordinates && o.coordinates.lat)));
+    if (validOrders.length < 2) {
+      toast.error('Need at least 2 orders with addresses to optimize route');
+      return;
+    }
+
+    // Convert address to lat/lng fallback to coordinates if available (we'll use address strings for maps)
+    const origin = { lat: currentLocation.lat, lng: currentLocation.lng };
+
+    // Simple greedy nearest-neighbour algorithm using haversine distance between coordinates if available
+    const parseCoords = (o: any) => {
+      if (o.coordinates && typeof o.coordinates.lat === 'number' && typeof o.coordinates.lng === 'number') return { lat: o.coordinates.lat, lng: o.coordinates.lng, address: o.address };
+      // Try to parse from address if it's lat,lng
+      const m = typeof o.address === 'string' ? o.address.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/) : null;
+      if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]), address: o.address };
+      return null;
+    };
+
+    const points = validOrders.map(o => ({ order: o, coords: parseCoords(o) }));
+
+    const haversine = (a: {lat:number,lng:number}, b: {lat:number,lng:number}) => {
+      const toRad = (v:number) => v * Math.PI / 180;
+      const R = 6371; // km
+      const dLat = toRad(b.lat - a.lat);
+      const dLon = toRad(b.lng - a.lng);
+      const lat1 = toRad(a.lat);
+      const lat2 = toRad(b.lat);
+      const sinDlat = Math.sin(dLat/2);
+      const sinDlon = Math.sin(dLon/2);
+      const aHarv = sinDlat*sinDlat + sinDlon*sinDlon * Math.cos(lat1) * Math.cos(lat2);
+      const c = 2 * Math.atan2(Math.sqrt(aHarv), Math.sqrt(1-aHarv));
+      return R * c;
+    };
+
+    // Use nearest neighbour starting from origin for points that have coords; others appended at end
+    const withCoords = points.filter(p => p.coords !== null);
+    const withoutCoords = points.filter(p => p.coords === null);
+
+    const route: any[] = [];
+    let current = origin;
+    const remaining = [...withCoords];
+    while (remaining.length > 0) {
+      let bestIndex = 0;
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < remaining.length; i++) {
+        const c = remaining[i].coords as any;
+        const dist = haversine(current as any, c);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIndex = i;
+        }
+      }
+      const picked = remaining.splice(bestIndex, 1)[0];
+      route.push(picked.order);
+      current = picked.coords as any;
+    }
+
+    // Append orders without coords at the end (best-effort)
+    withoutCoords.forEach(p => route.push(p.order));
+
+    // Build maps URL (up to 10 waypoints including origin/destination limit)
+    const waypointLimit = 8;
+    const encodedWaypoints = route.slice(0, waypointLimit + 1).map(o => encodeURIComponent(o.address || `${o.coordinates?.lat},${o.coordinates?.lng}`));
+    const originStr = `${origin.lat},${origin.lng}`;
+    const destination = encodedWaypoints[encodedWaypoints.length - 1];
+    const intermediate = encodedWaypoints.slice(0, encodedWaypoints.length - 1).join('|');
+    const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${originStr}&destination=${destination}&travelmode=driving${intermediate ? `&waypoints=${intermediate}` : ''}`;
+
+    toast.loading('Opening optimized route...', { id: 'optimize' });
+    window.open(mapsUrl, '_blank');
+    setTimeout(() => {
+      toast.dismiss('optimize');
+      toast.success('Optimized route opened in Google Maps');
+    }, 600);
+  };
+
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [otpOrderId, setOtpOrderId] = useState<string | null>(null);
+  const [otpType, setOtpType] = useState<'pickup'|'delivery'>('pickup');
+  const [otpValue, setOtpValue] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [resendCountdown, setResendCountdown] = useState<number>(0);
+  const resendTimerRef = React.useRef<number | null>(null);
+
+  const startResendCountdown = (seconds: number = 30) => {
+    setResendCountdown(seconds);
+    if (resendTimerRef.current) window.clearInterval(resendTimerRef.current);
+    resendTimerRef.current = window.setInterval(() => {
+      setResendCountdown(prev => {
+        if (prev <= 1) {
+          if (resendTimerRef.current) {
+            window.clearInterval(resendTimerRef.current);
+            resendTimerRef.current = null;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (resendTimerRef.current) {
+        window.clearInterval(resendTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleOrderAction = async (orderId: string, action: 'accept' | 'start' | 'complete' | 'reject') => {
     try {
       // Validate rider status first
       if (!rider) {
@@ -343,54 +579,189 @@ export default function RiderDashboard() {
       const apiUrl = getRiderApiUrl('/order-action');
       console.log('🔍 Order action:', action, 'for order:', orderId, 'API URL:', apiUrl);
 
-      // Show loading state
-      toast.loading(`${action.charAt(0).toUpperCase() + action.slice(1)}ing order...`, {
-        id: `order-action-${orderId}`
+      const currentOrder = assignedOrders.find(order => order._id === orderId);
+
+      const shouldRequestOtp = action === 'start' || action === 'complete';
+
+      // If the action requires OTP verification before proceeding, request OTP first
+      if (shouldRequestOtp) {
+        toast.loading(`${action.charAt(0).toUpperCase() + action.slice(1)}ing order...`, { id: `order-action-${orderId}` });
+        try {
+          const r = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ orderId, action, riderId: rider?._id, location: currentLocation, timestamp: new Date().toISOString(), requireOtp: true })
+          });
+
+          const d = await r.json().catch(() => ({}));
+          toast.dismiss(`order-action-${orderId}`);
+
+          if (r.ok && d.need_verification) {
+            toast.success('OTP sent to customer. Please verify to continue.');
+            // Open inline OTP modal so rider can enter the OTP without leaving dashboard
+            setOtpOrderId(orderId);
+            setOtpType(action === 'start' ? 'pickup' : 'delivery');
+            setOtpValue('');
+            setOtpModalOpen(true);
+            // Start resend countdown to prevent spam
+            try { startResendCountdown(30); } catch (e) { console.warn('Failed to start resend countdown', e); }
+          } else if (r.ok) {
+            // Backend chose to perform the action immediately (no OTP needed)
+            if (action === 'start' && currentOrder) {
+              setTimeout(() => openGoogleMapsNavigation(currentOrder), 500);
+            } else {
+              toast.success(`Order ${action}ed successfully!`);
+            }
+          } else {
+            toast.error(d.message || `Failed to ${action} order. Please try again.`);
+          }
+
+          await fetchAssignedOrders();
+        return;
+      } catch (err) {
+        console.warn('OTP request failed, falling back to standard action', err);
+        toast.dismiss(`order-action-${orderId}`);
+        // Fall through to normal action attempt
+      }
+    }
+
+    // Default behavior (accept or fallback when OTP request failed)
+    toast.loading(`${action.charAt(0).toUpperCase() + action.slice(1)}ing order...`, { id: `order-action-${orderId}` });
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        orderId,
+        action,
+        riderId: rider?._id,
+        location: currentLocation,
+        timestamp: new Date().toISOString()
+      })
+    });
+
+    // Try to parse JSON, otherwise fall back to text for better diagnostics
+    let responseData: any = null;
+    try {
+      // Use clone to avoid consuming the response body twice
+      responseData = await response.clone().json();
+    } catch (e) {
+      try {
+        responseData = await response.text();
+      } catch (e2) {
+        responseData = null;
+      }
+    }
+
+    toast.dismiss(`order-action-${orderId}`);
+
+    if (response.ok) {
+      toast.success(`Order ${action}ed successfully!`);
+      if (action === 'accept') {
+        navigate(`/rider/orders/${orderId}`, { state: { fromAccept: true } });
+      } else if (action === 'start' && currentOrder) {
+        setTimeout(() => openGoogleMapsNavigation(currentOrder), 500);
+      }
+      await fetchAssignedOrders();
+    } else {
+      // Enhanced diagnostics for debugging server 500 with empty body
+      let rawText = '';
+      try {
+        rawText = await response.clone().text();
+      } catch (e) {
+        rawText = '';
+      }
+      console.error('Order action failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Array.from(response.headers.entries()),
+        parsedBody: responseData,
+        rawText
       });
 
-      const response = await fetch(apiUrl, {
+      const msg = typeof responseData === 'string' ? responseData : (responseData?.message || rawText || `Failed to ${action} order. Please try again.`);
+      toast.error(msg);
+    }
+  } catch (error) {
+    console.error('Order action error:', error);
+    toast.dismiss(`order-action-${orderId}`);
+    toast.error('Network error. Please check your connection and try again.');
+  }
+};
+
+  // Verify customer OTP from inline dashboard modal
+  const verifyCustomerOTPInline = async () => {
+    if (!otpOrderId) return toast.error('No order selected for OTP verification');
+    if (!otpValue) return toast.error('Enter OTP');
+    try {
+      setOtpLoading(true);
+      const token = localStorage.getItem('riderToken');
+      const apiUrl = getRiderApiUrl(`/orders/${otpOrderId}/verify-customer-otp`);
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({
-          orderId,
-          action,
-          riderId: rider?._id,
-          location: currentLocation,
-          timestamp: new Date().toISOString()
-        })
+        body: JSON.stringify({ otp: otpValue, type: otpType })
       });
-
-      const responseData = await response.json().catch(() => ({}));
-
-      // Dismiss loading toast
-      toast.dismiss(`order-action-${orderId}`);
-
-      if (response.ok) {
-        toast.success(`Order ${action}ed successfully!`);
-
-        // If accepting or starting an order, open Google Maps navigation
-        if (action === 'accept' || action === 'start') {
-          const currentOrder = assignedOrders.find(order => order._id === orderId);
-          if (currentOrder) {
-            setTimeout(() => {
-              openGoogleMapsNavigation(currentOrder);
-            }, 1000); // Small delay to allow success message to show
-          }
-        }
-
-        // Refresh orders immediately
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        toast.success('OTP verified');
+        setOtpModalOpen(false);
+        setOtpValue('');
+        setOtpOrderId(null);
+        // Refresh orders
         await fetchAssignedOrders();
+        // Notify global manager
+        try {
+          if (otpOrderId && (window as any).globalVerificationManager) {
+            (window as any).globalVerificationManager.setVerificationStatus(otpOrderId, 'approved');
+          }
+          window.dispatchEvent(new CustomEvent('globalVerificationStatusChanged', { detail: { orderId: otpOrderId, status: 'approved' } }));
+        } catch (e) {
+          console.warn('Failed to notify global manager after inline OTP verify', e);
+        }
       } else {
-        console.error('Order action failed:', response.status, responseData);
-        toast.error(responseData.message || `Failed to ${action} order. Please try again.`);
+        toast.error(data.message || 'OTP verification failed');
       }
-    } catch (error) {
-      console.error('Order action error:', error);
-      toast.dismiss(`order-action-${orderId}`);
-      toast.error('Network error. Please check your connection and try again.');
+    } catch (err) {
+      console.error('Inline OTP verify error', err);
+      toast.error('OTP verification failed');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleReject = async (orderId: string) => {
+    await handleOrderAction(orderId, 'reject');
+  };
+
+  const handleEditCart = (order: any) => {
+    try {
+      navigate(`/rider/orders/${order._id}`, { state: { editCart: true } });
+    } catch (err) {
+      console.error('Navigation error (edit cart):', err);
+      toast.error('Unable to open order editor. Please try again.');
+    }
+  };
+
+  const fetchEarningsSummary = async () => {
+    try {
+      const token = localStorage.getItem('riderToken');
+      if (!token) return;
+      const apiUrl = getRiderApiUrl('/earnings/summary');
+      const r = await fetch(apiUrl, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) return;
+      const data = await r.json();
+      setEarnings({ daily: data.daily || 0, weekly: data.weekly || 0 });
+    } catch (e) {
+      console.warn('Failed to fetch earnings', e);
     }
   };
 
@@ -400,262 +771,128 @@ export default function RiderDashboard() {
 
   return (
     <RiderLayout>
-      <div className="space-y-6 rider-mobile-layout">
-        {/* Network Status Indicator */}
-        {!isOnline && (
-          <Card className="rider-card-mobile rider-alert-mobile rider-alert-error-mobile">
-            <CardContent className="pt-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                <p className="text-red-800 font-medium rider-text-body-mobile">You're offline</p>
-                <p className="text-red-600 text-sm rider-text-small-mobile">Some features may not work properly</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-
-        {/* Notifications Card */}
-        <RiderNotifications compact={true} />
-
-        {/* Rider Status Alert */}
-        {rider?.status !== 'approved' && (
-          <Card className="rider-card-mobile rider-alert-mobile rider-alert-warning-mobile">
-            <CardContent className="pt-4">
-              <div className="flex items-start space-x-3">
-                <div className="flex-shrink-0 mt-1">
-                  {rider?.status === 'pending' ? (
-                    <Clock className="h-5 w-5 text-orange-500" />
-                  ) : (
-                    <XCircle className="h-5 w-5 text-red-500" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-medium text-orange-800 rider-text-body-mobile">
-                    {rider?.status === 'pending' ? 'Account Pending Approval' : 'Account Rejected'}
-                  </h3>
-                  <p className="text-sm text-orange-700 mt-1 rider-text-small-mobile leading-relaxed">
-                    {rider?.status === 'pending'
-                      ? 'Your account is currently under review by our admin team. You will be notified once approved.'
-                      : `Your account has been rejected. ${rider?.rejectionReason ? 'Reason: ' + rider.rejectionReason : 'Please contact admin for more details.'}`
-                    }
-                  </p>
-                  {rider?.status === 'rejected' && (
-                    <p className="text-sm text-orange-700 mt-2 rider-text-small-mobile">
-                      <strong>Next Steps:</strong> Contact our support team to resubmit your application.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Status Card */}
-        <Card className="rider-card-mobile rider-status-card-mobile">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 rider-heading-small-mobile">
-              <Activity className="h-5 w-5" />
-              <span>Rider Status</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="rider-status-toggle-mobile">
-              <div className="rider-status-info-mobile">
-                <div className="flex items-center justify-center space-x-2 mb-2">
-                  <Label htmlFor="active-toggle" className="status-label">Active Status</Label>
-                  <Badge variant={isActive ? 'default' : 'secondary'} className={`rider-badge-mobile ${isActive ? 'rider-badge-active-mobile' : 'rider-badge-inactive-mobile'}`}>
-                    {isActive ? 'Active' : 'Inactive'}
-                  </Badge>
-                </div>
-                <p className="status-description rider-text-body-mobile">
-                  Toggle to start receiving order assignments
-                </p>
-                {currentLocation && (
-                  <div className="rider-location-status-mobile">
-                    <MapPin className="h-3 w-3" />
-                    <span>Location tracking active</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex justify-center">
-                <Switch
-                  id="active-toggle"
-                  checked={isActive}
-                  onCheckedChange={toggleActiveStatus}
-                  disabled={rider?.status !== 'approved'}
-                  className="rider-toggle-mobile"
-                />
-              </div>
-              {rider?.status !== 'approved' && (
-                <p className="text-xs text-gray-500 text-center mt-2 rider-text-small-mobile">
-                  Only approved riders can go active
-                </p>
-              )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-lg font-semibold">Assigned Orders</h2>
+              <div className="text-sm text-muted-foreground">Tap an order to view details, edit items or start navigation</div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Rider Info */}
-        <Card className="rider-card-mobile">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 rider-heading-small-mobile">
-              <User className="h-5 w-5" />
-              <span>Profile Information</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="rider-profile-grid-mobile">
-              <div className="rider-profile-item-mobile">
-                <Label className="rider-profile-label-mobile">Name</Label>
-                <p className="rider-profile-value-mobile">{rider.name}</p>
-              </div>
-              <div className="rider-profile-item-mobile">
-                <Label className="rider-profile-label-mobile">Phone</Label>
-                <a href={`tel:${rider.phone}`} className="rider-profile-value-mobile rider-phone-link-mobile">{rider.phone}</a>
-              </div>
-              <div className="rider-profile-item-mobile">
-                <Label className="rider-profile-label-mobile">Status</Label>
-                <Badge variant={rider.status === 'approved' ? 'default' : 'secondary'} className={`rider-badge-mobile ${rider.status === 'approved' ? 'rider-badge-approved-mobile' : rider.status === 'pending' ? 'rider-badge-pending-mobile' : 'rider-badge-rejected-mobile'}`}>
-                  {rider.status}
-                </Badge>
-              </div>
-              <div className="rider-profile-item-mobile">
-                <Label className="rider-profile-label-mobile">Aadhar Number</Label>
-                <p className="rider-profile-value-mobile font-mono text-sm">{rider.aadharNumber}</p>
-              </div>
+            <div className="ml-4">
+              <Button size="sm" variant="ghost" onClick={() => navigate('/rider/history')}>Order History</Button>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex items-center gap-2">
+              <div className="text-sm">Beep: {beeping ? 'On' : 'Off'}</div>
+              <Button size="sm" variant="ghost" onClick={() => (beeping ? stopBeepLoop() : startBeepLoop())}>{beeping ? 'Stop Alert' : 'Start Alert'}</Button>
+              <Button size="sm" variant="outline" onClick={() => openOptimizedRoute(assignedOrders)} disabled={!currentLocation || assignedOrders.length < 2}>
+                Optimize Route
+              </Button>
+            </div>
+          </div>
 
-        {/* Assigned Orders */}
-        <Card className="rider-card-mobile">
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2 rider-heading-small-mobile">
-              <Package className="h-5 w-5" />
-              <span>Assigned Orders</span>
-            </CardTitle>
-            <CardDescription className="rider-text-body-mobile">
-              Orders assigned to you for pickup and delivery
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {assignedOrders.length === 0 ? (
-              <div className="rider-empty-state-mobile">
-                <Package className="rider-empty-icon-mobile" />
-                <p className="rider-empty-title-mobile">No orders assigned yet</p>
-                <p className="rider-empty-description-mobile">Make sure you're active to receive orders</p>
-              </div>
+          {/* Upcoming orders within next 2 hours */}
+          <div className="mb-3">
+            <h3 className="text-md font-medium">Upcoming (next 2 hours)</h3>
+            {upcomingOrders.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No upcoming orders in the next 2 hours.</div>
             ) : (
-              <div className="space-y-4">
-                {assignedOrders
-                  .sort((a, b) => {
-                    // Sort by pickup time - earliest first
-                    const timeA = a.pickupTime || a.scheduled_time || '23:59';
-                    const timeB = b.pickupTime || b.scheduled_time || '23:59';
-                    const dateA = a.pickupDate || a.scheduled_date || '2099-12-31';
-                    const dateB = b.pickupDate || b.scheduled_date || '2099-12-31';
-
-                    // Combine date and time for comparison
-                    const datetimeA = new Date(`${dateA} ${timeA}`);
-                    const datetimeB = new Date(`${dateB} ${timeB}`);
-
-                    return datetimeA.getTime() - datetimeB.getTime();
-                  })
-                  .map((order) => (
-                  <Card key={order._id} className="rider-card-mobile rider-order-card-mobile">
-                    <CardContent className="pt-4">
-                      <div className="rider-order-header-mobile">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h4 className="rider-order-title-mobile">Order #{order.bookingId}</h4>
-                            <p className="rider-order-type-mobile">{order.type} Order</p>
-                          </div>
-                          <Badge variant={
-                            order.riderStatus === 'assigned' ? 'secondary' :
-                            order.riderStatus === 'picked_up' ? 'default' : 'default'
-                          } className="rider-badge-mobile">
-                            {order.riderStatus}
-                          </Badge>
-                        </div>
-                      </div>
-                      
-                      <div className="rider-order-details-mobile">
-                        <div className="rider-order-detail-item-mobile">
-                          <User className="h-4 w-4 rider-order-detail-icon-mobile" />
-                          <div className="rider-order-detail-content-mobile">
-                            <div className="rider-order-detail-label-mobile">Customer</div>
-                            <div className="rider-order-detail-value-mobile">{order.customerName}</div>
-                          </div>
-                        </div>
-                        <div className="rider-order-detail-item-mobile">
-                          <Phone className="h-4 w-4 rider-order-detail-icon-mobile" />
-                          <div className="rider-order-detail-content-mobile">
-                            <div className="rider-order-detail-label-mobile">Phone</div>
-                            <a href={`tel:${order.customerPhone}`} className="rider-order-detail-value-mobile rider-phone-link-mobile">{order.customerPhone}</a>
-                          </div>
-                        </div>
-                        <div className="rider-order-detail-item-mobile">
-                          <MapPin className="h-4 w-4 rider-order-detail-icon-mobile" />
-                          <div className="rider-order-detail-content-mobile">
-                            <div className="rider-order-detail-label-mobile">Address</div>
-                            <div className="rider-order-detail-value-mobile">{order.address}</div>
-                          </div>
-                        </div>
-                        <div className="rider-order-detail-item-mobile">
-                          <Clock className="h-4 w-4 rider-order-detail-icon-mobile" />
-                          <div className="rider-order-detail-content-mobile">
-                            <div className="rider-order-detail-label-mobile">Pickup Time</div>
-                            <div className="rider-order-detail-value-mobile">{order.pickupTime}</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="rider-order-actions-mobile">
-                        {order.riderStatus === 'assigned' && (
-                          <Button
-                            onClick={() => handleOrderAction(order._id, 'accept')}
-                            className="rider-action-button-mobile rider-primary-action-mobile"
-                            disabled={!isActive || rider?.status !== 'approved'}
-                          >
-                            <CheckCircle className="h-4 w-4" />
-                            {(!isActive || rider?.status !== 'approved') ? 'Cannot Accept' : 'Accept & Navigate'}
-                          </Button>
-                        )}
-                        {order.riderStatus === 'accepted' && (
-                          <Button
-                            onClick={() => handleOrderAction(order._id, 'start')}
-                            className="rider-action-button-mobile rider-secondary-action-mobile"
-                          >
-                            <Navigation className="h-4 w-4" />
-                            Start & Navigate
-                          </Button>
-                        )}
-                        {order.riderStatus === 'picked_up' && (
-                          <Button
-                            onClick={() => handleOrderAction(order._id, 'complete')}
-                            className="rider-action-button-mobile rider-complete-action-mobile"
-                          >
-                            <CheckCircle className="h-4 w-4" />
-                            Complete Delivery
-                          </Button>
-                        )}
-                        <Button
-                          variant="outline"
-                          onClick={() => navigate(`/rider/orders/${order._id}`)}
-                          className="rider-action-button-mobile rider-outline-action-mobile"
-                        >
-                          📝 Edit Order
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              upcomingOrders.map((o) => (
+                <OrderCard
+                  key={`up_${o._id}`}
+                  order={o}
+                  onAccept={(id) => handleOrderAction(id, 'accept')}
+                  onReject={(id) => handleReject(id)}
+                  onStart={(id) => handleOrderAction(id, 'start')}
+                  onComplete={(id) => handleOrderAction(id, 'complete')}
+                  onNavigate={(order) => openGoogleMapsNavigation(order)}
+                  onEditCart={(order) => handleEditCart(order)}
+                />
+              ))
             )}
-          </CardContent>
-        </Card>
+          </div>
+
+          {/* All assigned orders (newest first) */}
+          <div>
+            <h3 className="text-md font-medium">All Assigned Orders</h3>
+            {allAssignedOrders.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No assigned orders right now.</div>
+            ) : (
+              allAssignedOrders.map((o) => (
+                <OrderCard
+                  key={`all_${o._id}`}
+                  order={o}
+                  onAccept={(id) => handleOrderAction(id, 'accept')}
+                  onReject={(id) => handleReject(id)}
+                  onStart={(id) => handleOrderAction(id, 'start')}
+                  onComplete={(id) => handleOrderAction(id, 'complete')}
+                  onNavigate={(order) => openGoogleMapsNavigation(order)}
+                  onEditCart={(order) => handleEditCart(order)}
+                />
+              ))
+            )}
+          </div>
+        </div>
+
+        <aside className="lg:col-span-1">
+          <EarningsDashboard daily={earnings.daily} weekly={earnings.weekly} onRefresh={fetchEarningsSummary} />
+          <TrainingVideo videoUrl={undefined} />
+        </aside>
       </div>
+
+      {/* Inline OTP verification dialog */}
+      <Dialog open={otpModalOpen} onOpenChange={(open) => setOtpModalOpen(open)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Enter Customer OTP</DialogTitle>
+            <DialogDescription>Please enter the OTP sent to the customer to proceed.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 mt-2">
+            <div>
+              <Label className="text-sm">OTP</Label>
+              <Input value={otpValue} onChange={(e) => setOtpValue((e.target as HTMLInputElement).value)} placeholder="Enter OTP" />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                Sent to: {otpOrderId ? (assignedOrders.find(o => o._id === otpOrderId)?.customerPhone || 'Customer') : 'Customer'}
+              </div>
+              <div>
+                <Button size="sm" variant="ghost" onClick={async () => {
+                  if (!otpOrderId) return;
+                  try {
+                    const token = localStorage.getItem('riderToken');
+                    const url = getRiderApiUrl(`/orders/${otpOrderId}/request-customer-otp`);
+                    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ type: otpType }) });
+                    const d = await res.json().catch(() => ({}));
+                    if (res.ok) {
+                      toast.success('OTP resent to customer');
+                      startResendCountdown(30);
+                    } else {
+                      toast.error(d.message || 'Failed to resend OTP');
+                    }
+                  } catch (err) {
+                    console.error('Resend OTP error', err);
+                    toast.error('Failed to resend OTP');
+                  }
+                }} disabled={resendCountdown > 0}>
+                  {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : 'Resend OTP'}
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => { setOtpModalOpen(false); setOtpValue(''); setOtpOrderId(null); }}>
+                Cancel
+              </Button>
+              <Button onClick={verifyCustomerOTPInline} disabled={otpLoading}>
+                {otpLoading ? 'Verifying...' : 'Verify OTP'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </RiderLayout>
   );
 }

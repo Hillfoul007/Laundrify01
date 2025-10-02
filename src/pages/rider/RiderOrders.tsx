@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { vendorService } from '@/services/vendorService';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,8 @@ import {
   Save,
   X,
   AlertTriangle,
-  Bell
+  Bell,
+  Lock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import RiderLayout from '@/components/rider/RiderLayout';
@@ -38,7 +39,21 @@ export default function RiderOrders() {
   const { orderId } = useParams();
   const navigate = useNavigate();
   const [order, setOrder] = useState<any>(null);
+
+  const location = useLocation();
   const [isEditing, setIsEditing] = useState(false);
+
+  // If navigated from Accept action, Dialogflow or RiderDashboard passes state { fromAccept: true }
+  useEffect(() => {
+    try {
+      if ((location as any)?.state && (location as any).state.fromAccept) {
+        console.log('➡️ Entering edit mode: navigated from accept');
+        setIsEditing(true);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [location]);
   const [editedItems, setEditedItems] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedService, setSelectedService] = useState<LaundryService | null>(null);
@@ -49,6 +64,10 @@ export default function RiderOrders() {
   const [originalTotal, setOriginalTotal] = useState(0);
   const [deliveryDate, setDeliveryDate] = useState('');
   const [deliveryTime, setDeliveryTime] = useState('');
+  const [pickupPhotos, setPickupPhotos] = useState<string[]>([]);
+  const [deliveryPhotos, setDeliveryPhotos] = useState<string[]>([]);
+  const pickupInputRef = useRef<HTMLInputElement | null>(null);
+  const deliveryInputRef = useRef<HTMLInputElement | null>(null);
 
   // Initialize customer verification service
   const verificationService = CustomerVerificationService.getInstance();
@@ -564,7 +583,7 @@ export default function RiderOrders() {
   const fetchOrderDetails = async (id: string) => {
     // Helper function to use mock data
     const useMockData = (reason: string) => {
-      console.log(`📋 Using mock data: ${reason}`);
+      console.log(`���� Using mock data: ${reason}`);
       console.log('📋 Order ID being processed:', id);
       const mockData = getMockOrderData(id);
 
@@ -814,6 +833,50 @@ export default function RiderOrders() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // Upload photo helper
+  const handleUploadPhotoFile = async (type: 'pickup' | 'delivery', file: File) => {
+    if (!file || !orderId) return;
+    try {
+      const token = localStorage.getItem('riderToken');
+      const apiUrl = getRiderApiUrl(`/orders/${orderId}/upload-photo?type=${type}`);
+      const fd = new FormData();
+      fd.append('photo', file, file.name);
+
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) {
+        if (type === 'delivery') {
+          setDeliveryPhotos(prev => [...prev, data.url]);
+          setOrder(prev => ({ ...prev, delivery_photos: [...(prev.delivery_photos || []), data.url] }));
+        } else {
+          setPickupPhotos(prev => [...prev, data.url]);
+          setOrder(prev => ({ ...prev, pickup_photos: [...(prev.pickup_photos || []), data.url] }));
+        }
+        toast.success('Photo uploaded successfully');
+      } else {
+        toast.error(data.message || 'Upload failed');
+      }
+    } catch (error) {
+      console.error('Upload photo error:', error);
+      toast.error('Upload failed. Please try again.');
+    }
+  };
+
+  const triggerPickupInput = () => pickupInputRef.current?.click();
+  const triggerDeliveryInput = () => deliveryInputRef.current?.click();
+
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'pickup'|'delivery') => {
+    const file = e.target.files?.[0];
+    if (file) await handleUploadPhotoFile(type, file);
+    // Clear value to allow reuploading same file if needed
+    if (e.target) e.target.value = '';
   };
 
   const saveOrderChanges = async () => {
@@ -1234,6 +1297,77 @@ export default function RiderOrders() {
 
   const totalAmount = editedItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
 
+  const [customerOtp, setCustomerOtp] = useState('');
+  const [otpRequested, setOtpRequested] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+
+  const requestCustomerOTP = async (type: 'pickup'|'delivery') => {
+    try {
+      const token = localStorage.getItem('riderToken');
+      const apiUrl = getRiderApiUrl(`/orders/${orderId}/request-customer-otp`);
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ type })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success !== false) {
+        setOtpRequested(true);
+        toast.success('OTP requested to customer');
+      } else {
+        toast.error(data.message || 'Failed to request OTP');
+      }
+    } catch (err) {
+      console.error('Request customer OTP error', err);
+      toast.error('Failed to request OTP');
+    }
+  };
+
+  const verifyCustomerOTP = async (type: 'pickup'|'delivery') => {
+    if (!customerOtp) return toast.error('Enter OTP');
+    try {
+      setOtpVerifying(true);
+      const token = localStorage.getItem('riderToken');
+      const apiUrl = getRiderApiUrl(`/orders/${orderId}/verify-customer-otp`);
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ otp: customerOtp, type })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        toast.success('OTP verified');
+        setOtpRequested(false);
+        setCustomerOtp('');
+        // Refresh order details
+        fetchOrderDetails(orderId!);
+
+        // Inform global manager and other parts of the app that verification completed so dashboards refresh
+        try {
+          if (orderId && globalVerificationManager) {
+            globalVerificationManager.setVerificationStatus(orderId, 'approved');
+          }
+          window.dispatchEvent(new CustomEvent('globalVerificationStatusChanged', { detail: { orderId, status: 'approved' } }));
+        } catch (e) {
+          console.warn('Failed to notify global verification manager after OTP verify', e);
+        }
+      } else {
+        toast.error(data.message || 'OTP verification failed');
+      }
+    } catch (err) {
+      console.error('Verify customer OTP error', err);
+      toast.error('OTP verification failed');
+    } finally {
+      setOtpVerifying(false);
+    }
+  };
+
   return (
     <RiderLayout>
       <div className="space-y-6">
@@ -1254,6 +1388,20 @@ export default function RiderOrders() {
           }>
             {typeof order.riderStatus === 'string' ? order.riderStatus : 'Unknown'}
           </Badge>
+
+          <div className="ml-auto flex items-center space-x-2">
+            <Button size="sm" variant="ghost" onClick={() => {
+              try {
+                const phone = order.customerPhone || order.phone || (order.customer_id && order.customer_id.phone) || '';
+                const itemsList = (editedItems && editedItems.length > 0 ? editedItems : (order.items || [])).map((it: any) => `- ${it.name} x${it.quantity} (₹${it.price || it.unit_price || 0})`).join('%0A');
+                const msg = `Hello ${order.customerName || ''},%0AYour items:%0A${itemsList}%0AOrder ID: ${order.bookingId || order._id}`;
+                const wa = phone ? `https://wa.me/${phone.replace(/\D/g,'')}?text=${msg}` : `https://wa.me/?text=${msg}`;
+                window.open(wa, '_blank');
+              } catch (e) {
+                console.warn('Failed to open WhatsApp', e);
+              }
+            }}>Share Confirmation</Button>
+          </div>
         </div>
 
         {/* Customer Information */}
@@ -1347,8 +1495,89 @@ export default function RiderOrders() {
           </CardContent>
         </Card>
 
+        {/* Photos (Pickup / Delivery) */}
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center space-x-2">
+        <Package className="h-5 w-5" />
+        <span>Pickup / Delivery Photos</span>
+      </CardTitle>
+      <CardDescription>
+        Upload proof photos during pickup or delivery. Photos will be attached to the order record.
+      </CardDescription>
+    </CardHeader>
+    <CardContent>
+      <div className="flex flex-col gap-3">
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-medium">Pickup Photos</div>
+            <div className="flex items-center gap-2">
+              <input ref={pickupInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileInputChange(e, 'pickup')} />
+              <Button size="sm" onClick={triggerPickupInput}>Upload Pickup Photo</Button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto">
+            {(order?.pickup_photos || pickupPhotos || []).map((p: string, i: number) => (
+              <img key={p + i} src={p} alt={`pickup-${i}`} className="h-20 w-20 object-cover rounded-md border" />
+            ))}
+            {((order?.pickup_photos || pickupPhotos || []).length === 0) && (
+              <div className="text-xs text-gray-500">No pickup photos uploaded</div>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-medium">Delivery Photos</div>
+            <div className="flex items-center gap-2">
+              <input ref={deliveryInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileInputChange(e, 'delivery')} />
+              <Button size="sm" onClick={triggerDeliveryInput}>Upload Delivery Photo</Button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto">
+            {(order?.delivery_photos || deliveryPhotos || []).map((p: string, i: number) => (
+              <img key={p + i} src={p} alt={`delivery-${i}`} className="h-20 w-20 object-cover rounded-md border" />
+            ))}
+            {((order?.delivery_photos || deliveryPhotos || []).length === 0) && (
+              <div className="text-xs text-gray-500">No delivery photos uploaded</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+
+  {/* Customer OTP Confirmation */}
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center space-x-2">
+        <Lock className="h-5 w-5" />
+        <span>Customer OTP Confirmation</span>
+      </CardTitle>
+      <CardDescription>
+        Request an OTP to the customer and verify it when picking up or delivering items.
+      </CardDescription>
+    </CardHeader>
+    <CardContent>
+      <div className="flex items-center gap-3">
+        <Button size="sm" onClick={() => requestCustomerOTP('pickup')}>Request Pickup OTP</Button>
+        <Button size="sm" onClick={() => requestCustomerOTP('delivery')}>Request Delivery OTP</Button>
+        <div className="flex items-center gap-2 ml-auto">
+          <input type="text" value={customerOtp} onChange={(e) => setCustomerOtp(e.target.value.replace(/\D/g, '').slice(0,6))} placeholder="Enter OTP" className="px-3 py-2 border rounded text-sm" />
+          <Button size="sm" onClick={() => verifyCustomerOTP('pickup')} disabled={otpVerifying}>{otpVerifying ? 'Verifying...' : 'Verify Pickup'}</Button>
+          <Button size="sm" variant="outline" onClick={() => verifyCustomerOTP('delivery')} disabled={otpVerifying}>{otpVerifying ? 'Verifying...' : 'Verify Delivery'}</Button>
+        </div>
+      </div>
+      {otpRequested && (
+        <p className="text-sm text-green-600 mt-2">OTP has been requested to the customer. Please ask them for the code.</p>
+      )}
+    </CardContent>
+  </Card>
+
         {/* Order Items */}
-        <Card>
+  <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
               <CardTitle className="flex items-center space-x-2">
@@ -1452,7 +1681,7 @@ export default function RiderOrders() {
                         </Badge>
                       )}
                     </div>
-                    <p className="text-sm text-gray-600">₹{item.price} each</p>
+                    <p className="text-sm text-gray-600">��{item.price} each</p>
                     {item.description && (
                       <p className="text-xs text-gray-500 mt-1">{item.description}</p>
                     )}

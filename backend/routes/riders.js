@@ -595,7 +595,7 @@ router.post('/toggle-status', verifyRiderToken, async (req, res) => {
 
     // For demo mode, just return success
     if (!mongoose.connection.readyState) {
-      console.log('���� Demo mode: Status toggle accepted');
+      console.log('����� Demo mode: Status toggle accepted');
       return res.json({
         message: `Status updated to ${isActive ? 'active' : 'inactive'} (demo mode)`,
         isActive,
@@ -872,6 +872,209 @@ router.get('/orders/:orderId', verifyRiderToken, async (req, res) => {
     // Return mock data on error instead of failing
     console.log('🔧 Error fallback: Returning mock order data');
     res.json(getMockOrderData(req.params.orderId));
+  }
+});
+
+// Upload pickup/delivery photo for an order
+router.post('/orders/:orderId/upload-photo', verifyRiderToken, upload.single('photo'), async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const type = (req.query.type || req.body.type || 'pickup').toString().toLowerCase(); // 'pickup' or 'delivery'
+
+    console.log('📸 Upload photo request:', { orderId, type, hasFile: !!req.file, rider: req.rider?.riderId });
+
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+
+    // Save relative path
+    const relativePath = `/uploads/orders/${req.file.filename}`;
+
+    // Demo mode: just return
+    if (!mongoose.connection.readyState) {
+      return res.json({ success: true, url: relativePath, mode: 'demo' });
+    }
+
+    // Update booking document
+    const booking = await Booking.findById(orderId);
+    if (!booking) return res.status(404).json({ message: 'Order not found' });
+
+    if (type === 'delivery' || type.startsWith('del')) {
+      booking.delivery_photos = booking.delivery_photos || [];
+      booking.delivery_photos.push(relativePath);
+    } else {
+      booking.pickup_photos = booking.pickup_photos || [];
+      booking.pickup_photos.push(relativePath);
+    }
+
+    await booking.save();
+
+    res.json({ success: true, url: relativePath });
+  } catch (error) {
+    console.error('❌ Upload photo error:', error);
+    res.status(500).json({ success: false, message: 'Upload failed', error: error.message });
+  }
+});
+
+// Earnings summary for rider (daily/weekly)
+router.get('/earnings/summary', verifyRiderToken, async (req, res) => {
+  try {
+    console.log('🔍 Earnings summary request for rider:', req.rider?.riderId);
+
+    if (!mongoose.connection.readyState) {
+      return res.json({ daily: 0, weekly: 0, mode: 'demo' });
+    }
+
+    const riderId = req.rider.riderId;
+    const now = new Date();
+
+    // Start of today (local server tz)
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Start of week (7 days ago)
+    const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    startOfWeek.setHours(0,0,0,0);
+
+    const dailyAgg = await Booking.aggregate([
+      { $match: { assignedRider: mongoose.Types.ObjectId(riderId), status: { $in: ['completed','delivered'] }, updated_at: { $gte: startOfToday } } },
+      { $group: { _id: null, total: { $sum: '$final_amount' } } }
+    ]);
+
+    const weeklyAgg = await Booking.aggregate([
+      { $match: { assignedRider: mongoose.Types.ObjectId(riderId), status: { $in: ['completed','delivered'] }, updated_at: { $gte: startOfWeek } } },
+      { $group: { _id: null, total: { $sum: '$final_amount' } } }
+    ]);
+
+    const daily = (dailyAgg && dailyAgg[0] && dailyAgg[0].total) ? dailyAgg[0].total : 0;
+    const weekly = (weeklyAgg && weeklyAgg[0] && weeklyAgg[0].total) ? weeklyAgg[0].total : 0;
+
+    res.json({ daily, weekly });
+  } catch (error) {
+    console.error('❌ Earnings summary error:', error);
+    res.status(500).json({ daily:0, weekly:0, error: error.message });
+  }
+});
+
+// Export earnings CSV for date range: ?start=YYYY-MM-DD&end=YYYY-MM-DD
+router.get('/earnings/export', verifyRiderToken, async (req, res) => {
+  try {
+    const riderId = req.rider.riderId;
+    const { start, end } = req.query || {};
+
+    const startDate = start ? new Date(String(start)) : new Date(new Date().getTime() - 30*24*60*60*1000);
+    const endDate = end ? new Date(String(end)) : new Date();
+
+    // Normalize to day boundaries
+    startDate.setHours(0,0,0,0);
+    endDate.setHours(23,59,59,999);
+
+    const records = await Booking.find({
+      assignedRider: riderId,
+      status: { $in: ['completed','delivered'] },
+      updated_at: { $gte: startDate, $lte: endDate }
+    }).sort({ updated_at: -1 });
+
+    // Build CSV
+    const rows = [['order_id','date','amount','customer_phone','status']];
+    records.forEach(r => {
+      rows.push([
+        r.custom_order_id || String(r._id),
+        r.updated_at ? new Date(r.updated_at).toISOString() : '',
+        String(r.final_amount || 0),
+        r.phone || (r.customer_id && r.customer_id.phone) || '',
+        r.riderStatus || r.status || ''
+      ]);
+    });
+
+    const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(',')).join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="earnings_${riderId}_${startDate.toISOString().slice(0,10)}_${endDate.toISOString().slice(0,10)}.csv"`);
+    res.send(csv);
+  } catch (error) {
+    console.error('❌ Earnings export error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get rider's completed / historical orders (paginated)
+router.get('/orders/history', verifyRiderToken, async (req, res) => {
+  try {
+    const riderId = req.rider.riderId;
+    const page = Math.max(1, parseInt(String(req.query.page || '1'), 10));
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '20'), 10)));
+    const skip = (page - 1) * limit;
+
+    // Demo mode
+    if (!mongoose.connection.readyState) {
+      console.log('🔧 Demo mode: Returning sample completed orders for history');
+      const sampleCompleted = [
+        {
+          _id: 'completed_1',
+          bookingId: 'LAU-100',
+          customerName: 'Completed One',
+          customerPhone: '+91 9000000001',
+          address: 'Demo Address',
+          pickupTime: 'Yesterday',
+          type: 'Regular',
+          riderStatus: 'completed',
+          completedAt: new Date().toISOString(),
+          items: [{ name: 'Shirt', quantity: 2, price: 50 }]
+        }
+      ];
+      return res.json({ total: sampleCompleted.length, page, limit, data: sampleCompleted });
+    }
+
+    // Query completed regular bookings
+    const bookingFilter = {
+      assignedRider: riderId,
+      $or: [ { riderStatus: 'completed' }, { status: 'completed' }, { status: 'delivered' } ]
+    };
+
+    const quickFilter = { rider_id: riderId, status: { $in: ['completed', 'delivered'] } };
+
+    const [bookings, quicks, bookingsCount, quicksCount] = await Promise.all([
+      Booking.find(bookingFilter).populate('customer_id', 'name phone').sort({ completedAt: -1, updated_at: -1 }).skip(skip).limit(limit),
+      QuickPickup.find(quickFilter).populate('customer_id', 'name phone').sort({ completedAt: -1, updatedAt: -1 }).skip(skip).limit(limit),
+      Booking.countDocuments(bookingFilter),
+      QuickPickup.countDocuments(quickFilter)
+    ]);
+
+    const transformedBookings = bookings.map(order => ({
+      _id: order._id,
+      bookingId: order.custom_order_id || order._id,
+      customerName: order.name || order.customer_id?.name,
+      customerPhone: order.phone || order.customer_id?.phone,
+      address: order.address,
+      pickupTime: `${order.scheduled_date || ''} ${order.scheduled_time || ''}`.trim(),
+      type: 'Regular',
+      riderStatus: order.riderStatus || 'completed',
+      completedAt: order.completedAt || order.updated_at,
+      items: order.item_prices || [],
+      finalAmount: order.final_amount || 0
+    }));
+
+    const transformedQuicks = quicks.map(qp => ({
+      _id: qp._id,
+      bookingId: `QP-${qp._id.toString().slice(-6).toUpperCase()}`,
+      customerName: qp.customer_name || qp.customer_id?.name,
+      customerPhone: qp.customer_phone || qp.customer_id?.phone,
+      address: qp.address,
+      pickupTime: `${qp.pickup_date || ''} ${qp.pickup_time || ''}`.trim(),
+      type: 'Quick Pickup',
+      riderStatus: 'completed',
+      completedAt: qp.completedAt || qp.updatedAt || qp.createdAt,
+      items: qp.items_collected || [],
+      finalAmount: qp.actual_cost || qp.estimated_cost || 0
+    }));
+
+    const combined = [...transformedBookings, ...transformedQuicks]
+      .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+
+    const total = bookingsCount + quicksCount;
+
+    res.json({ total, page, limit, data: combined });
+  } catch (error) {
+    console.error('❌ Get rider order history error:', error);
+    res.status(500).json({ message: 'Failed to fetch order history', error: error.message });
   }
 });
 
@@ -1317,6 +1520,20 @@ router.put('/orders/:orderId/update', verifyRiderToken, async (req, res) => {
         });
 
         console.log('✅ Customer notification created successfully:', notification._id);
+
+        // Send SMS to customer summarizing the change (best-effort)
+        try {
+          const customerPhone = order.customer_id?.phone || notificationData.customerPhone;
+          const summary = notificationData.riderChanges && notificationData.riderChanges.priceChange !== undefined ?
+            `Price changed by ₹${notificationData.riderChanges.priceChange}` : 'Order updated by rider';
+          if (customerPhone) {
+            await otpService.sendSMS(customerPhone, `Your order ${order.custom_order_id || order._id} has changes: ${summary}. Please check your app to approve.`, 'order_update');
+            console.log('📱 SMS sent to customer about verification');
+          }
+        } catch (smsErr) {
+          console.warn('❌ Failed to send SMS to customer about verification:', smsErr);
+        }
+
       } catch (notificationError) {
         console.error('❌ Failed to create customer notification:', notificationError);
       }
@@ -1360,23 +1577,114 @@ router.put('/orders/:orderId/update', verifyRiderToken, async (req, res) => {
   }
 });
 
+// Request OTP to customer for pickup/delivery confirmation
+router.post('/orders/:orderId/request-customer-otp', verifyRiderToken, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { type = 'pickup' } = req.body || {};
+
+    // Find booking or quick pickup
+    let booking = await Booking.findById(orderId);
+    let phone = null;
+    if (booking) phone = booking.phone || booking.customerPhone;
+    else {
+      const quick = await QuickPickup.findById(orderId);
+      if (quick) phone = quick.customer_phone || quick.customerPhone;
+    }
+
+    if (!phone) return res.status(404).json({ success: false, message: 'Order or customer phone not found' });
+
+    const otp = otpService.generateOTP();
+    otpService.storeOTP(phone, otp, type);
+    const smsResult = await otpService.sendOTP(phone, otp, type);
+
+    // Additionally log/create notification
+    try {
+      await notificationService.sendSMS(phone, `Your ${type} OTP is ${otp}. It is valid for 10 minutes.`, 'customer_otp');
+    } catch (err) {
+      console.warn('Failed to send notification SMS via notificationService', err);
+    }
+
+    res.json({ success: smsResult.success, message: smsResult.message || 'OTP requested' });
+  } catch (error) {
+    console.error('Request customer OTP error:', error);
+    res.status(500).json({ success: false, message: 'Failed to request OTP', error: error.message });
+  }
+});
+
+// Verify customer OTP for pickup/delivery
+router.post('/orders/:orderId/verify-customer-otp', verifyRiderToken, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { otp, type = 'pickup' } = req.body || {};
+
+    if (!otp) return res.status(400).json({ success: false, message: 'OTP is required' });
+
+    // Find booking or quick pickup
+    let booking = await Booking.findById(orderId);
+    let phone = null;
+    if (booking) phone = booking.phone || booking.customerPhone;
+    else {
+      const quick = await QuickPickup.findById(orderId);
+      if (quick) phone = quick.customer_phone || quick.customerPhone;
+    }
+
+    if (!phone) return res.status(404).json({ success: false, message: 'Order or customer phone not found' });
+
+    const verification = otpService.verifyOTP(phone, otp, type);
+    if (!verification.success) {
+      return res.status(400).json({ success: false, message: verification.error, attemptsRemaining: verification.attemptsRemaining });
+    }
+
+    // Optionally update booking status
+    if (booking) {
+      if (type === 'pickup') {
+        booking.riderStatus = 'picked_up';
+        booking.pickedUpAt = new Date();
+      } else {
+        booking.riderStatus = 'completed';
+        booking.completedAt = new Date();
+      }
+      await booking.save();
+    }
+
+    res.json({ success: true, message: 'OTP verified' });
+  } catch (error) {
+    console.error('Verify customer OTP error:', error);
+    res.status(500).json({ success: false, message: 'Failed to verify OTP', error: error.message });
+  }
+});
+
 // Handle order actions (accept, start, complete)
 router.post('/order-action', verifyRiderToken, async (req, res) => {
   try {
-    console.log('�� Order action request:', {
+    console.log('🧭 Order action request:', {
       hasRiderId: !!req.rider?.riderId,
       body: req.body
     });
 
-    const { orderId, action, location, riderId } = req.body;
+    const { orderId, action, location, riderId } = req.body || {};
+
+    // Validate required fields
+    if (!orderId || !action) {
+      return res.status(400).json({ message: 'orderId and action are required' });
+    }
 
     // Validate action
-    if (!['accept', 'start', 'complete'].includes(action)) {
+    if (!['accept', 'start', 'complete', 'reject'].includes(action)) {
       return res.status(400).json({ message: 'Invalid action' });
     }
 
-    // For demo mode, just return success
+    // If requireOtp requested, generate OTP and send to customer, respond with need_verification
+    const { requireOtp } = req.body || {};
+
+    // Demo mode: when DB not connected, provide deterministic demo responses
     if (!mongoose.connection.readyState) {
+      if (requireOtp) {
+        console.log('🔧 Demo mode: OTP requested for order action');
+        return res.json({ need_verification: true, message: 'OTP requested (demo mode)' });
+      }
+
       console.log('🔧 Demo mode: Order action accepted');
       return res.json({
         message: `Order ${action}ed successfully (demo mode)`,
@@ -1389,13 +1697,37 @@ router.post('/order-action', verifyRiderToken, async (req, res) => {
       });
     }
 
-    const order = await Booking.findOne({
-      _id: orderId,
-      assignedRider: req.rider.riderId
-    });
+    // Safely fetch order
+    let order;
+    try {
+      order = await Booking.findOne({
+        _id: orderId,
+        assignedRider: req.rider?.riderId
+      });
+    } catch (dbErr) {
+      console.error('❌ DB query error while fetching order:', dbErr);
+      return res.status(500).json({ message: 'Database query failed', error: dbErr.message });
+    }
+
+    // If OTP verification is required before performing the action
+    if (requireOtp) {
+      try {
+        const phone = order ? (order.phone || order.customerPhone || (order.customer_id && order.customer_id.phone)) : null;
+        if (!phone) {
+          return res.status(404).json({ success: false, message: 'Customer phone not found for OTP' });
+        }
+        const otp = otpService.generateOTP();
+        otpService.storeOTP(phone, otp, action === 'start' ? 'pickup' : 'delivery');
+        await otpService.sendOTP(phone, otp, action === 'start' ? 'pickup' : 'delivery');
+        return res.json({ need_verification: true, message: 'OTP sent to customer' });
+      } catch (otpErr) {
+        console.error('❌ OTP send error:', otpErr);
+        return res.status(500).json({ message: 'Failed to send OTP', error: otpErr.message });
+      }
+    }
 
     if (!order) {
-      console.log('❌ Order not found, using demo response');
+      console.log('❌ Order not found, using demo fallback');
       return res.json({
         message: `Order ${action}ed successfully (demo fallback)`,
         order: {
@@ -1406,6 +1738,7 @@ router.post('/order-action', verifyRiderToken, async (req, res) => {
       });
     }
 
+    // Apply status change
     switch (action) {
       case 'accept':
         order.riderStatus = 'accepted';
@@ -1419,27 +1752,48 @@ router.post('/order-action', verifyRiderToken, async (req, res) => {
         order.riderStatus = 'completed';
         order.completedAt = new Date();
         break;
+      case 'reject':
+        // Unassign the rider and mark rejected by rider
+        order.riderStatus = 'rejected_by_rider';
+        order.rejectedBy = req.rider?.riderId || null;
+        order.rejectedAt = new Date();
+        order.assignedRider = null;
+        break;
     }
 
-    await order.save();
+    try {
+      await order.save();
+    } catch (saveErr) {
+      console.error('❌ Error saving order status change:', saveErr);
+      return res.status(500).json({ message: 'Failed to save order status', error: saveErr.message });
+    }
 
-    res.json({
+    // Notify customer via SMS and create notification (non-blocking)
+    (async () => {
+      try {
+        const customerPhone = order.phone || (order.customer_id && order.customer_id.phone) || order.customerPhone;
+        const riderInfo = { id: req.rider?.riderId };
+        const msg = `Your order ${order.custom_order_id || order._id} is now ${order.riderStatus}.`;
+        if (customerPhone) {
+          try { await otpService.sendSMS(customerPhone, msg, 'order_status'); } catch (smsErr) { console.warn('Failed to send order status SMS', smsErr); }
+        }
+        try { await notificationService.createOrderUpdateNotification(order.customer_id || null, order, riderInfo, { action }); } catch (notifErr) { console.warn('Failed to create notification record', notifErr); }
+      } catch (notifyErr) {
+        console.warn('Failed to notify customer about order action', notifyErr);
+      }
+    })();
+
+    return res.json({
       message: `Order ${action}ed successfully`,
       order,
       mode: 'database'
     });
   } catch (error) {
-    console.error('❌ Order action error:', error);
-    // Fallback to demo response on error
-    const { orderId, action } = req.body;
-    res.json({
-      message: `Order ${action}ed successfully (error fallback)`,
-      order: {
-        _id: orderId,
-        riderStatus: action === 'accept' ? 'accepted' : action === 'start' ? 'picked_up' : 'completed'
-      },
-      mode: 'error_fallback'
-    });
+    console.error('❌ Order action error (unhandled):', error);
+    // Return detailed error in development, generic message in production
+    const payload = { message: 'Order action failed', error: error.message };
+    if (process.env.NODE_ENV !== 'production') payload.stack = error.stack;
+    return res.status(500).json(payload);
   }
 });
 
